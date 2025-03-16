@@ -31,6 +31,7 @@ type CreateWorkerGroupOptions struct {
 	image             string
 	workerCPU         string
 	workerGPU         string
+	workerTPU         string
 	workerMemory      string
 	workerReplicas    int32
 	workerMinReplicas int32
@@ -48,6 +49,9 @@ var (
 
 		# Create a worker group in an existing Ray cluster
 		kubectl ray create workergroup example-group --ray-cluster sample-cluster --image %s --worker-cpu 2 --worker-memory 5Gi
+
+		# Create a worker group in an existing Ray cluster with worker TPU
+		kubectl ray create workergroup example-group --ray-cluster sample-cluster --worker-tpu 1
 	`, util.RayImage))
 )
 
@@ -92,6 +96,7 @@ func NewCreateWorkerGroupCommand(streams genericclioptions.IOStreams) *cobra.Com
 	cmd.Flags().Int32Var(&options.workerMaxReplicas, "worker-max-replicas", 10, "maximum number of replicas")
 	cmd.Flags().StringVar(&options.workerCPU, "worker-cpu", "2", "number of CPUs in each replica")
 	cmd.Flags().StringVar(&options.workerGPU, "worker-gpu", "0", "number of GPUs in each replica")
+	cmd.Flags().StringVar(&options.workerTPU, "worker-tpu", "0", "number of TPUs in each replica")
 	cmd.Flags().StringVar(&options.workerMemory, "worker-memory", "4Gi", "amount of memory in each replica")
 	cmd.Flags().StringToStringVar(&options.rayStartParams, "worker-ray-start-params", options.rayStartParams, "a map of arguments to the Ray workers' 'ray start' entrypoint, e.g. '--worker-ray-start-params metrics-export-port=8080,num-cpus=2'")
 
@@ -180,6 +185,11 @@ func createWorkerGroupSpec(options *CreateWorkerGroupOptions) rayv1.WorkerGroupS
 		podTemplate.Spec.Containers[0].Resources.Limits[corev1.ResourceName(util.ResourceNvidiaGPU)] = gpuResource
 	}
 
+	tpuResource := resource.MustParse(options.workerTPU)
+	if !tpuResource.IsZero() {
+		podTemplate.Spec.Containers[0].Resources.Requests[corev1.ResourceName(util.ResourceGoogleTPU)] = tpuResource
+		podTemplate.Spec.Containers[0].Resources.Limits[corev1.ResourceName(util.ResourceGoogleTPU)] = tpuResource
+	}
 	return rayv1.WorkerGroupSpec{
 		GroupName:      options.groupName,
 		Replicas:       &options.workerReplicas,
