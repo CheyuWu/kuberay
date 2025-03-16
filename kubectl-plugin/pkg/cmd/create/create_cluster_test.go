@@ -98,3 +98,35 @@ func TestRayClusterCreateClusterRun(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestNewCreateClusterCommand(t *testing.T) {
+	testStreams, _, _, _ := genericclioptions.NewTestIOStreams()
+	cmd := NewCreateClusterCommand(testStreams)
+
+	t.Run("should have correct use and short description", func(t *testing.T) {
+		assert.Equal(t, "cluster [CLUSTERNAME]", cmd.Use)
+		assert.Equal(t, "Create Ray cluster", cmd.Short)
+	})
+
+	t.Run("should have all expected flags", func(t *testing.T) {
+		flags := cmd.Flags()
+
+		assert.NotNil(t, flags.Lookup("ray-version"))
+		assert.NotNil(t, flags.Lookup("image"))
+		assert.NotNil(t, flags.Lookup("head-cpu"))
+		assert.NotNil(t, flags.Lookup("head-memory"))
+		assert.NotNil(t, flags.Lookup("head-gpu"))
+		assert.NotNil(t, flags.Lookup("head-ephemeral-storage"))
+		assert.NotNil(t, flags.Lookup("head-ray-start-params"))
+		assert.NotNil(t, flags.Lookup("worker-replicas"))
+		assert.NotNil(t, flags.Lookup("worker-cpu"))
+		assert.NotNil(t, flags.Lookup("worker-memory"))
+		assert.NotNil(t, flags.Lookup("worker-gpu"))
+		assert.NotNil(t, flags.Lookup("worker-tpu"))
+		assert.NotNil(t, flags.Lookup("worker-ephemeral-storage"))
+		assert.NotNil(t, flags.Lookup("worker-ray-start-params"))
+		assert.NotNil(t, flags.Lookup("dry-run"))
+		assert.NotNil(t, flags.Lookup("wait"))
+		assert.NotNil(t, flags.Lookup("timeout"))
+	})
+}
