@@ -2,6 +2,7 @@ package generation
 
 import (
 	"maps"
+	"os"
 
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
@@ -56,6 +57,17 @@ func (rayClusterObject *RayClusterYamlObject) GenerateRayClusterApplyConfig() *r
 		WithLabels(rayClusterObject.Labels).
 		WithAnnotations(rayClusterObject.Annotations).
 		WithSpec(rayClusterObject.generateRayClusterSpec())
+
+	yamlOutput, err := ConvertRayClusterApplyConfigToYaml(rayClusterApplyConfig)
+	if err != nil {
+		panic(err)
+	}
+
+	// Output the YAML to a file
+	err = os.WriteFile("ray_cluster.yaml", []byte(yamlOutput), 0644)
+	if err != nil {
+		panic(err)
+	}
 
 	return rayClusterApplyConfig
 }
@@ -152,7 +164,6 @@ func (rayClusterSpecObject *RayClusterSpecObject) generateRayClusterSpec() *rayv
 						WithResources(corev1ac.ResourceRequirements().
 							WithRequests(workerResources).
 							WithLimits(workerResources))))))
-
 	return rayClusterSpec
 }
 

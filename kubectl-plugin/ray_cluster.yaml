@@ -1,0 +1,50 @@
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: abc
+  namespace: default
+spec:
+  headGroupSpec:
+    rayStartParams:
+      dashboard-host: 0.0.0.0
+    template:
+      spec:
+        containers:
+        - image: rayproject/ray:2.41.0
+          name: ray-head
+          ports:
+          - containerPort: 6379
+            name: gcs-server
+          - containerPort: 8265
+            name: dashboard
+          - containerPort: 10001
+            name: client
+          resources:
+            limits:
+              cpu: "2"
+              memory: 4Gi
+            requests:
+              cpu: "2"
+              memory: 4Gi
+  rayVersion: 2.41.0
+  workerGroupSpecs:
+  - groupName: default-group
+    maxReplicas: 1
+    minReplicas: 1
+    rayStartParams:
+      metrics-export-port: "8080"
+    replicas: 1
+    template:
+      spec:
+        containers:
+        - image: rayproject/ray:2.41.0
+          name: ray-worker
+          resources:
+            limits:
+              cpu: "2"
+              google.com/tpu: "1"
+              memory: 4Gi
+            requests:
+              cpu: "2"
+              google.com/tpu: "1"
+              memory: 4Gi
