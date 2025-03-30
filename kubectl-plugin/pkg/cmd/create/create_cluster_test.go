@@ -101,7 +101,8 @@ func TestRayClusterCreateClusterRun(t *testing.T) {
 
 func TestNewCreateClusterCommand(t *testing.T) {
 	testStreams, _, _, _ := genericclioptions.NewTestIOStreams()
-	cmd := NewCreateClusterCommand(testStreams)
+	cmdFactory := cmdutil.NewFactory(genericclioptions.NewConfigFlags(true))
+	cmd := NewCreateClusterCommand(cmdFactory, testStreams)
 
 	t.Run("should have correct use and short description", func(t *testing.T) {
 		assert.Equal(t, "cluster [CLUSTERNAME]", cmd.Use)
