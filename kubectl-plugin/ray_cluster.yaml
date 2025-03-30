@@ -29,8 +29,8 @@ spec:
   rayVersion: 2.41.0
   workerGroupSpecs:
   - groupName: default-group
-    maxReplicas: 1
     minReplicas: 1
+    maxReplicas: 1
     numOfHosts: 1
     rayStartParams:
       metrics-export-port: "8080"
@@ -44,8 +44,10 @@ spec:
             limits:
               cpu: "2"
               google.com/tpu: "4"
+              ephemeral-storage: 20Gi
               memory: 4Gi
             requests:
               cpu: "2"
               google.com/tpu: "4"
+              ephemeral-storage: 20Gi
               memory: 4Gi
