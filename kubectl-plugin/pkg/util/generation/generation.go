@@ -29,6 +29,7 @@ type RayClusterSpecObject struct {
 	HeadEphemeralStorage   string
 	WorkerCPU              string
 	WorkerGPU              string
+	WorkerTPU              string
 	WorkerMemory           string
 	WorkerEphemeralStorage string
 	WorkerReplicas         int32
@@ -70,7 +71,7 @@ func (rayJobObject *RayJobYamlObject) GenerateRayJobApplyConfig() *rayv1ac.RayJo
 }
 
 // generateResources returns a corev1.ResourceList with the given CPU, memory, ephemeral storage, and GPU values for both requests and limits
-func generateResources(cpu, memory, ephemeralStorage, gpu string) corev1.ResourceList {
+func generateResources(cpu, memory, ephemeralStorage, gpu string, tpu string) corev1.ResourceList {
 	resources := corev1.ResourceList{
 		corev1.ResourceCPU:    resource.MustParse(cpu),
 		corev1.ResourceMemory: resource.MustParse(memory),
@@ -82,6 +83,11 @@ func generateResources(cpu, memory, ephemeralStorage, gpu string) corev1.Resourc
 	gpuResource := resource.MustParse(gpu)
 	if !gpuResource.IsZero() {
 		resources[corev1.ResourceName(util.ResourceNvidiaGPU)] = gpuResource
+	}
+
+	tpuResource := resource.MustParse(tpu)
+	if !tpuResource.IsZero() {
+		resources[corev1.ResourceName(util.ResourceGoogleTPU)] = tpuResource
 	}
 
 	return resources
@@ -100,8 +106,22 @@ func (rayClusterSpecObject *RayClusterSpecObject) generateRayClusterSpec() *rayv
 	maps.Copy(headRayStartParams, rayClusterSpecObject.HeadRayStartParams)
 	maps.Copy(workerRayStartParams, rayClusterSpecObject.WorkerRayStartParams)
 
-	headResources := generateResources(rayClusterSpecObject.HeadCPU, rayClusterSpecObject.HeadMemory, rayClusterSpecObject.HeadEphemeralStorage, rayClusterSpecObject.HeadGPU)
-	workerResources := generateResources(rayClusterSpecObject.WorkerCPU, rayClusterSpecObject.WorkerMemory, rayClusterSpecObject.WorkerEphemeralStorage, rayClusterSpecObject.WorkerGPU)
+	headResources := generateResources(
+		rayClusterSpecObject.HeadCPU,
+		rayClusterSpecObject.HeadMemory,
+		rayClusterSpecObject.HeadEphemeralStorage,
+		rayClusterSpecObject.HeadGPU,
+		// RayClusterSpecObject does not have a field for HeadTPU
+		// so we are setting it to 0
+		"0",
+	)
+	workerResources := generateResources(
+		rayClusterSpecObject.WorkerCPU,
+		rayClusterSpecObject.WorkerMemory,
+		rayClusterSpecObject.WorkerEphemeralStorage,
+		rayClusterSpecObject.WorkerGPU,
+		rayClusterSpecObject.WorkerTPU,
+	)
 
 	rayClusterSpec := rayv1ac.RayClusterSpec().
 		WithRayVersion(rayClusterSpecObject.RayVersion).

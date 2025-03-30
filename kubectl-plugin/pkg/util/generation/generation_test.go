@@ -48,6 +48,7 @@ func TestGenerateRayClusterApplyConfig(t *testing.T) {
 			WorkerCPU:      "2",
 			WorkerMemory:   "10Gi",
 			WorkerGPU:      "1",
+			WorkerTPU:      "1",
 			WorkerRayStartParams: map[string]string{
 				"dagon":    "azathoth",
 				"shoggoth": "cthulhu",
@@ -68,13 +69,14 @@ func TestGenerateRayClusterApplyConfig(t *testing.T) {
 	assert.Equal(t, testRayClusterYamlObject.RayVersion, *result.Spec.RayVersion)
 	assert.Equal(t, testRayClusterYamlObject.Image, *result.Spec.HeadGroupSpec.Template.Spec.Containers[0].Image)
 	assert.Equal(t, resource.MustParse(testRayClusterYamlObject.HeadCPU), *result.Spec.HeadGroupSpec.Template.Spec.Containers[0].Resources.Requests.Cpu())
-	assert.Equal(t, resource.MustParse(testRayClusterYamlObject.HeadGPU), *result.Spec.HeadGroupSpec.Template.Spec.Containers[0].Resources.Requests.Name(corev1.ResourceName("nvidia.com/gpu"), resource.DecimalSI))
+	assert.Equal(t, resource.MustParse(testRayClusterYamlObject.HeadGPU), *result.Spec.HeadGroupSpec.Template.Spec.Containers[0].Resources.Requests.Name(corev1.ResourceName(util.ResourceNvidiaGPU), resource.DecimalSI))
 	assert.Equal(t, resource.MustParse(testRayClusterYamlObject.HeadMemory), *result.Spec.HeadGroupSpec.Template.Spec.Containers[0].Resources.Requests.Memory())
 	assert.Equal(t, testRayClusterYamlObject.HeadRayStartParams, result.Spec.HeadGroupSpec.RayStartParams)
 	assert.Equal(t, "default-group", *result.Spec.WorkerGroupSpecs[0].GroupName)
 	assert.Equal(t, testRayClusterYamlObject.WorkerReplicas, *result.Spec.WorkerGroupSpecs[0].Replicas)
 	assert.Equal(t, resource.MustParse(testRayClusterYamlObject.WorkerCPU), *result.Spec.WorkerGroupSpecs[0].Template.Spec.Containers[0].Resources.Requests.Cpu())
-	assert.Equal(t, resource.MustParse(testRayClusterYamlObject.WorkerGPU), *result.Spec.WorkerGroupSpecs[0].Template.Spec.Containers[0].Resources.Requests.Name(corev1.ResourceName("nvidia.com/gpu"), resource.DecimalSI))
+	assert.Equal(t, resource.MustParse(testRayClusterYamlObject.WorkerGPU), *result.Spec.WorkerGroupSpecs[0].Template.Spec.Containers[0].Resources.Requests.Name(corev1.ResourceName(util.ResourceNvidiaGPU), resource.DecimalSI))
+	assert.Equal(t, resource.MustParse(testRayClusterYamlObject.WorkerTPU), *result.Spec.WorkerGroupSpecs[0].Template.Spec.Containers[0].Resources.Requests.Name(corev1.ResourceName(util.ResourceGoogleTPU), resource.DecimalSI))
 	assert.Equal(t, resource.MustParse(testRayClusterYamlObject.WorkerMemory), *result.Spec.WorkerGroupSpecs[0].Template.Spec.Containers[0].Resources.Requests.Memory())
 	assert.Equal(t, expectedWorkerRayStartParams, result.Spec.WorkerGroupSpecs[0].RayStartParams)
 }
@@ -94,6 +96,7 @@ func TestGenerateRayJobApplyConfig(t *testing.T) {
 			WorkerCPU:      "2",
 			WorkerMemory:   "10Gi",
 			WorkerGPU:      "0",
+			WorkerTPU:      "0",
 		},
 	}
 
@@ -106,7 +109,7 @@ func TestGenerateRayJobApplyConfig(t *testing.T) {
 	assert.Equal(t, testRayJobYamlObject.Image, *result.Spec.RayClusterSpec.HeadGroupSpec.Template.Spec.Containers[0].Image)
 	assert.Equal(t, resource.MustParse(testRayJobYamlObject.HeadCPU), *result.Spec.RayClusterSpec.HeadGroupSpec.Template.Spec.Containers[0].Resources.Requests.Cpu())
 	assert.Equal(t, resource.MustParse(testRayJobYamlObject.HeadMemory), *result.Spec.RayClusterSpec.HeadGroupSpec.Template.Spec.Containers[0].Resources.Requests.Memory())
-	assert.Equal(t, resource.MustParse(testRayJobYamlObject.HeadGPU), *result.Spec.RayClusterSpec.HeadGroupSpec.Template.Spec.Containers[0].Resources.Requests.Name(corev1.ResourceName("nvidia.com/gpu"), resource.DecimalSI))
+	assert.Equal(t, resource.MustParse(testRayJobYamlObject.HeadGPU), *result.Spec.RayClusterSpec.HeadGroupSpec.Template.Spec.Containers[0].Resources.Requests.Name(corev1.ResourceName(util.ResourceNvidiaGPU), resource.DecimalSI))
 	assert.Equal(t, "default-group", *result.Spec.RayClusterSpec.WorkerGroupSpecs[0].GroupName)
 	assert.Equal(t, testRayJobYamlObject.WorkerReplicas, *result.Spec.RayClusterSpec.WorkerGroupSpecs[0].Replicas)
 	assert.Equal(t, resource.MustParse(testRayJobYamlObject.WorkerCPU), *result.Spec.RayClusterSpec.WorkerGroupSpecs[0].Template.Spec.Containers[0].Resources.Requests.Cpu())
@@ -135,6 +138,7 @@ func TestConvertRayClusterApplyConfigToYaml(t *testing.T) {
 			WorkerCPU:      "2",
 			WorkerMemory:   "10Gi",
 			WorkerGPU:      "0",
+			WorkerTPU:      "0",
 		},
 	}
 
@@ -208,6 +212,7 @@ func TestGenerateResources(t *testing.T) {
 		memory            string
 		ephemeralStorage  string
 		gpu               string
+		tpu               string
 	}{
 		{
 			name:             "should generate resources with CPU, memory, ephemeral storage, and GPU",
@@ -215,6 +220,7 @@ func TestGenerateResources(t *testing.T) {
 			memory:           "5Gi",
 			ephemeralStorage: "10Gi",
 			gpu:              "1",
+			tpu:              "0",
 			expectedResources: corev1.ResourceList{
 				corev1.ResourceCPU:                          resource.MustParse("1"),
 				corev1.ResourceMemory:                       resource.MustParse("5Gi"),
@@ -228,16 +234,31 @@ func TestGenerateResources(t *testing.T) {
 			memory:           "5Gi",
 			ephemeralStorage: "",
 			gpu:              "0",
+			tpu:              "0",
 			expectedResources: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("1"),
 				corev1.ResourceMemory: resource.MustParse("5Gi"),
+			},
+		},
+		{
+			name:             "should generate resources with CPU, memory, ephemeral storage, and TPU",
+			cpu:              "1",
+			memory:           "5Gi",
+			ephemeralStorage: "10Gi",
+			gpu:              "0",
+			tpu:              "4",
+			expectedResources: corev1.ResourceList{
+				corev1.ResourceCPU:                          resource.MustParse("1"),
+				corev1.ResourceMemory:                       resource.MustParse("5Gi"),
+				corev1.ResourceEphemeralStorage:             resource.MustParse("10Gi"),
+				corev1.ResourceName(util.ResourceGoogleTPU): resource.MustParse("4"),
 			},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.expectedResources, generateResources(test.cpu, test.memory, test.ephemeralStorage, test.gpu))
+			assert.Equal(t, test.expectedResources, generateResources(test.cpu, test.memory, test.ephemeralStorage, test.gpu, test.tpu))
 		})
 	}
 }
@@ -265,6 +286,7 @@ func TestGenerateRayClusterSpec(t *testing.T) {
 			"worker-selector1": "baz",
 			"worker-selector2": "qux",
 		},
+		WorkerTPU:      "0",
 	}
 
 	expected := &rayv1ac.RayClusterSpecApplyConfiguration{
