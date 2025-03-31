@@ -29,14 +29,14 @@ spec:
   rayVersion: 2.41.0
   workerGroupSpecs:
   - groupName: default-group
-    minReplicas: 1
-    maxReplicas: 1
-    numOfHosts: 1
     rayStartParams:
       metrics-export-port: "8080"
     replicas: 1
     template:
       spec:
+        nodeSelector:
+            cloud.google.com/gke-tpu-accelerator: tpu-v5-lite-podslice
+            cloud.google.com/gke-tpu-topology: 2x4
         containers:
         - image: rayproject/ray:2.41.0
           name: ray-worker
@@ -44,10 +44,9 @@ spec:
             limits:
               cpu: "2"
               google.com/tpu: "4"
-              ephemeral-storage: 20Gi
               memory: 4Gi
             requests:
               cpu: "2"
               google.com/tpu: "4"
-              ephemeral-storage: 20Gi
               memory: 4Gi
+            
