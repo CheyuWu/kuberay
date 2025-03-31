@@ -78,6 +78,7 @@ func TestRayClusterCreateClusterRun(t *testing.T) {
 		workerCPU:    "1",
 		workerMemory: "1Gi",
 		workerGPU:    "1",
+		workerTPU:    "0",
 	}
 
 	t.Run("should error when the Ray cluster already exists", func(t *testing.T) {
