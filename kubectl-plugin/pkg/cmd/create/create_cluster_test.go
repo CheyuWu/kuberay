@@ -2,8 +2,10 @@ package create
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
+	"github.com/ray-project/kuberay/kubectl-plugin/pkg/util"
 	"github.com/ray-project/kuberay/kubectl-plugin/pkg/util/client"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -72,6 +74,8 @@ func TestRayClusterCreateClusterRun(t *testing.T) {
 	options := CreateClusterOptions{
 		cmdFactory:   cmdFactory,
 		clusterName:  clusterName,
+		labels:       map[string]string{"app": "ray", "env": "dev"},
+		annotations:  map[string]string{"ttl-hours": "24", "owner": "chthulu"},
 		headCPU:      "1",
 		headMemory:   "1Gi",
 		headGPU:      "0",
@@ -102,33 +106,38 @@ func TestRayClusterCreateClusterRun(t *testing.T) {
 
 func TestNewCreateClusterCommand(t *testing.T) {
 	testStreams, _, _, _ := genericclioptions.NewTestIOStreams()
-	cmdFactory := cmdutil.NewFactory(genericclioptions.NewConfigFlags(true))
-	cmd := NewCreateClusterCommand(cmdFactory, testStreams)
+	cmd := NewCreateClusterCommand(cmdutil.NewFactory(genericclioptions.NewConfigFlags(true)), testStreams)
+	cmd.Flags().StringP("namespace", "n", "", "")
 
-	t.Run("should have correct use and short description", func(t *testing.T) {
-		assert.Equal(t, "cluster [CLUSTERNAME]", cmd.Use)
-		assert.Equal(t, "Create Ray cluster", cmd.Short)
+	workerNodeSelectors := fmt.Sprintf(
+		"app=ray,env=dev,%s=tpu-v5,%s=2x4",
+		util.NodeSelectorGKETPUAccelerator,
+		util.NodeSelectorGKETPUTopology,
+	)
+
+	cmd.SetArgs([]string{
+		"sample-cluster",
+		"--ray-version", "2.44.0",
+		"--image", "rayproject/ray:2.44.0",
+		"--head-cpu", "1",
+		"--head-memory", "5Gi",
+		"--head-gpu", "1",
+		"--head-ephemeral-storage", "10Gi",
+		"--head-ray-start-params", "metrics-export-port=8080,num-cpus=2",
+		"--head-node-selectors", "app=ray,env=dev",
+		"--worker-replicas", "3",
+		"--worker-cpu", "1",
+		"--worker-memory", "5Gi",
+		"--worker-gpu", "1",
+		"--worker-tpu", "1",
+		"--worker-ephemeral-storage", "10Gi",
+		"--worker-ray-start-params", "metrics-export-port=8081,num-cpus=2",
+		"--worker-node-selectors", workerNodeSelectors,
+		"--labels", "app=ray,env=dev",
+		"--annotations", "ttl-hours=24,owner=chthulu",
+		"--dry-run",
+		"--wait",
+		"--timeout", "10s",
 	})
-
-	t.Run("should have all expected flags", func(t *testing.T) {
-		flags := cmd.Flags()
-
-		assert.NotNil(t, flags.Lookup("ray-version"))
-		assert.NotNil(t, flags.Lookup("image"))
-		assert.NotNil(t, flags.Lookup("head-cpu"))
-		assert.NotNil(t, flags.Lookup("head-memory"))
-		assert.NotNil(t, flags.Lookup("head-gpu"))
-		assert.NotNil(t, flags.Lookup("head-ephemeral-storage"))
-		assert.NotNil(t, flags.Lookup("head-ray-start-params"))
-		assert.NotNil(t, flags.Lookup("worker-replicas"))
-		assert.NotNil(t, flags.Lookup("worker-cpu"))
-		assert.NotNil(t, flags.Lookup("worker-memory"))
-		assert.NotNil(t, flags.Lookup("worker-gpu"))
-		assert.NotNil(t, flags.Lookup("worker-tpu"))
-		assert.NotNil(t, flags.Lookup("worker-ephemeral-storage"))
-		assert.NotNil(t, flags.Lookup("worker-ray-start-params"))
-		assert.NotNil(t, flags.Lookup("dry-run"))
-		assert.NotNil(t, flags.Lookup("wait"))
-		assert.NotNil(t, flags.Lookup("timeout"))
-	})
+	require.NoError(t, cmd.Execute())
 }
