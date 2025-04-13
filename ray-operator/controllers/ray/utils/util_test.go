@@ -579,14 +579,14 @@ func TestCalculateMaxReplicas(t *testing.T) {
 func TestCalculateDesiredReplicas(t *testing.T) {
 	tests := []struct {
 		group1Replicas    *int32
-		group1NumOfHosts  int32
 		group1MinReplicas *int32
 		group1MaxReplicas *int32
 		group2Replicas    *int32
-		group2NumOfHosts  int32
 		group2MinReplicas *int32
 		group2MaxReplicas *int32
 		name              string
+		group1NumOfHosts  int32
+		group2NumOfHosts  int32
 		answer            int32
 	}{
 		{
