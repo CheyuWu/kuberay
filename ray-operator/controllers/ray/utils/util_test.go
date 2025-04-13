@@ -579,9 +579,11 @@ func TestCalculateMaxReplicas(t *testing.T) {
 func TestCalculateDesiredReplicas(t *testing.T) {
 	tests := []struct {
 		group1Replicas    *int32
+		group1NumOfHosts  int32
 		group1MinReplicas *int32
 		group1MaxReplicas *int32
 		group2Replicas    *int32
+		group2NumOfHosts  int32
 		group2MinReplicas *int32
 		group2MaxReplicas *int32
 		name              string
@@ -589,9 +591,11 @@ func TestCalculateDesiredReplicas(t *testing.T) {
 	}{
 		{
 			group1Replicas:    nil,
+			group1NumOfHosts:  1,
 			group1MinReplicas: ptr.To[int32](1),
 			group1MaxReplicas: ptr.To[int32](5),
 			group2Replicas:    nil,
+			group2NumOfHosts:  1,
 			group2MinReplicas: ptr.To[int32](2),
 			group2MaxReplicas: ptr.To[int32](5),
 			name:              "Both groups' Replicas are nil",
@@ -599,9 +603,11 @@ func TestCalculateDesiredReplicas(t *testing.T) {
 		},
 		{
 			group1Replicas:    ptr.To[int32](0),
+			group1NumOfHosts:  1,
 			group1MinReplicas: ptr.To[int32](2),
 			group1MaxReplicas: ptr.To[int32](5),
 			group2Replicas:    ptr.To[int32](6),
+			group2NumOfHosts:  1,
 			group2MinReplicas: ptr.To[int32](2),
 			group2MaxReplicas: ptr.To[int32](5),
 			name:              "Group1's Replicas is smaller than MinReplicas, and Group2's Replicas is more than MaxReplicas.",
@@ -609,13 +615,27 @@ func TestCalculateDesiredReplicas(t *testing.T) {
 		},
 		{
 			group1Replicas:    ptr.To[int32](6),
+			group1NumOfHosts:  1,
 			group1MinReplicas: ptr.To[int32](2),
 			group1MaxReplicas: ptr.To[int32](5),
 			group2Replicas:    ptr.To[int32](3),
+			group2NumOfHosts:  1,
 			group2MinReplicas: ptr.To[int32](2),
 			group2MaxReplicas: ptr.To[int32](5),
 			name:              "Group1's Replicas is more than MaxReplicas.",
 			answer:            8,
+		},
+		{
+			group1Replicas:    ptr.To[int32](3),
+			group1NumOfHosts:  4,
+			group1MinReplicas: ptr.To[int32](1),
+			group1MaxReplicas: ptr.To[int32](6),
+			group2Replicas:    ptr.To[int32](3),
+			group2NumOfHosts:  1,
+			group2MinReplicas: ptr.To[int32](2),
+			group2MaxReplicas: ptr.To[int32](5),
+			name:              "Group1's NumOfHosts is 4, and Group2's Replicas is 1.",
+			answer:            15,
 		},
 	}
 
@@ -627,12 +647,14 @@ func TestCalculateDesiredReplicas(t *testing.T) {
 						{
 							GroupName:   "group1",
 							Replicas:    tc.group1Replicas,
+							NumOfHosts:  tc.group1NumOfHosts,
 							MinReplicas: tc.group1MinReplicas,
 							MaxReplicas: tc.group1MaxReplicas,
 						},
 						{
 							GroupName:   "group2",
 							Replicas:    tc.group2Replicas,
+							NumOfHosts:  tc.group2NumOfHosts,
 							MinReplicas: tc.group2MinReplicas,
 							MaxReplicas: tc.group2MaxReplicas,
 						},

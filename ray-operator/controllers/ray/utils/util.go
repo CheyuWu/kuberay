@@ -350,7 +350,7 @@ func GetWorkerGroupDesiredReplicas(ctx context.Context, workerGroupSpec rayv1.Wo
 func CalculateDesiredReplicas(ctx context.Context, cluster *rayv1.RayCluster) int32 {
 	count := int32(0)
 	for _, nodeGroup := range cluster.Spec.WorkerGroupSpecs {
-		count += GetWorkerGroupDesiredReplicas(ctx, nodeGroup)
+		count += (GetWorkerGroupDesiredReplicas(ctx, nodeGroup) * nodeGroup.NumOfHosts)
 	}
 
 	return count
