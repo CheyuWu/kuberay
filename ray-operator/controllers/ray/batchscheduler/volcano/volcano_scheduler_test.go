@@ -71,6 +71,7 @@ func TestCreatePodGroup(t *testing.T) {
 						Spec: workerSpec,
 					},
 					Replicas:    ptr.To[int32](2),
+					NumOfHosts:  1,
 					MinReplicas: ptr.To[int32](1),
 					MaxReplicas: ptr.To[int32](4),
 				},
