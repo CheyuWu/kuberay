@@ -18,7 +18,7 @@ spec:
 
   # rayClusterSpec specifies the RayCluster instance to be created by the RayJob controller.
   rayClusterSpec:
-    rayVersion: '2.41.0' # should match the Ray version in the image of the containers
+    rayVersion: "2.41.0" # should match the Ray version in the image of the containers
     # Ray head pod template
     headGroupSpec:
       rayStartParams: {}
@@ -58,7 +58,7 @@ spec:
       - replicas: 3
         minReplicas: 1
         maxReplicas: 6
-        # The number of hosts in this group. 
+        # The number of hosts in this group.
         numOfHosts: 2
         # logical group name, for this called worker-group, also can be functional
         groupName: worker-group
