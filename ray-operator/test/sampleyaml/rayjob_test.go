@@ -26,6 +26,9 @@ func TestRayJob(t *testing.T) {
 		{
 			name: "ray-job.shutdown.yaml",
 		},
+		{
+			name: "ray-job.multi-host.yaml",
+		},
 	}
 
 	for _, tt := range tests {
@@ -61,7 +64,7 @@ func TestRayJob(t *testing.T) {
 			var desiredWorkerReplicas int32
 			if rayCluster.Spec.WorkerGroupSpecs != nil {
 				for _, workerGroupSpec := range rayCluster.Spec.WorkerGroupSpecs {
-					desiredWorkerReplicas += *workerGroupSpec.Replicas
+					desiredWorkerReplicas += (*workerGroupSpec.Replicas * workerGroupSpec.NumOfHosts)
 				}
 			}
 			g.Eventually(WorkerPods(test, rayCluster), TestTimeoutShort).Should(HaveLen(int(desiredWorkerReplicas)))
