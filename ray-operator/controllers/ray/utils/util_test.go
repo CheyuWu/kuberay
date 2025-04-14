@@ -494,10 +494,12 @@ func TestGetWorkerGroupDesiredReplicas(t *testing.T) {
 	ctx := context.Background()
 	// Test 1: `WorkerGroupSpec.Replicas` is nil.
 	// `Replicas` is impossible to be nil in a real RayCluster CR as it has a default value assigned in the CRD.
+	numOfHosts := int32(1)
 	minReplicas := int32(1)
 	maxReplicas := int32(5)
 
 	workerGroupSpec := rayv1.WorkerGroupSpec{
+		NumOfHosts:  numOfHosts,
 		MinReplicas: &minReplicas,
 		MaxReplicas: &maxReplicas,
 	}
@@ -530,6 +532,17 @@ func TestGetWorkerGroupDesiredReplicas(t *testing.T) {
 	workerGroupSpec.MaxReplicas = &minReplicas
 	workerGroupSpec.Suspend = &suspend
 	assert.Zero(t, GetWorkerGroupDesiredReplicas(ctx, workerGroupSpec))
+
+	// Test 7: `WorkerGroupSpec.NumOfHosts` is 3.
+	numOfHosts = int32(3)
+	replicas = int32(5)
+	suspend = false
+	workerGroupSpec.NumOfHosts = numOfHosts
+	workerGroupSpec.Replicas = &replicas
+	workerGroupSpec.Suspend = &suspend
+	workerGroupSpec.MinReplicas = &minReplicas
+	workerGroupSpec.MaxReplicas = &maxReplicas
+	assert.Equal(t, GetWorkerGroupDesiredReplicas(ctx, workerGroupSpec), replicas*numOfHosts)
 }
 
 func TestCalculateMinReplicas(t *testing.T) {
