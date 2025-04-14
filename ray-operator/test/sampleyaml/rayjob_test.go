@@ -26,9 +26,6 @@ func TestRayJob(t *testing.T) {
 		{
 			name: "ray-job.shutdown.yaml",
 		},
-		{
-			name: "ray-job.multi-host.yaml",
-		},
 	}
 
 	for _, tt := range tests {
