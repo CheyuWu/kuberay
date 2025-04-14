@@ -492,57 +492,91 @@ func TestGenerateHeadServiceName(t *testing.T) {
 
 func TestGetWorkerGroupDesiredReplicas(t *testing.T) {
 	ctx := context.Background()
-	// Test 1: `WorkerGroupSpec.Replicas` is nil.
-	// `Replicas` is impossible to be nil in a real RayCluster CR as it has a default value assigned in the CRD.
-	numOfHosts := int32(1)
-	minReplicas := int32(1)
-	maxReplicas := int32(5)
 
-	workerGroupSpec := rayv1.WorkerGroupSpec{
-		NumOfHosts:  numOfHosts,
-		MinReplicas: &minReplicas,
-		MaxReplicas: &maxReplicas,
+	tests := []struct {
+		name     string
+		spec     rayv1.WorkerGroupSpec
+		expected int32
+	}{
+		{
+			name: "`Replicas` is impossible to be nil in a real RayCluster CR as it has a default value assigned in the CRD.",
+			spec: rayv1.WorkerGroupSpec{
+				NumOfHosts:  1,
+				MinReplicas: ptr.To(int32(1)),
+				MaxReplicas: ptr.To(int32(5)),
+				Replicas:    nil,
+			},
+			expected: 1,
+		},
+		{
+			name: "`WorkerGroupSpec.Replicas` is not nil and is within the range.",
+			spec: rayv1.WorkerGroupSpec{
+				NumOfHosts:  1,
+				MinReplicas: ptr.To(int32(1)),
+				MaxReplicas: ptr.To(int32(5)),
+				Replicas:    ptr.To(int32(3)),
+			},
+			expected: 3,
+		},
+		{
+			name: "`WorkerGroupSpec.Replicas` is not nil but is more than maxReplicas.",
+			spec: rayv1.WorkerGroupSpec{
+				NumOfHosts:  1,
+				MinReplicas: ptr.To(int32(1)),
+				MaxReplicas: ptr.To(int32(5)),
+				Replicas:    ptr.To(int32(6)),
+			},
+			expected: 5,
+		},
+		{
+			name: "`WorkerGroupSpec.Replicas` is not nil but is less than minReplicas.",
+			spec: rayv1.WorkerGroupSpec{
+				NumOfHosts:  1,
+				MinReplicas: ptr.To(int32(1)),
+				MaxReplicas: ptr.To(int32(5)),
+				Replicas:    ptr.To(int32(0)),
+			},
+			expected: 1,
+		},
+		{
+			name: "`WorkerGroupSpec.Replicas` is nil and minReplicas is less than maxReplicas.",
+			spec: rayv1.WorkerGroupSpec{
+				NumOfHosts:  1,
+				MinReplicas: ptr.To(int32(5)),
+				MaxReplicas: ptr.To(int32(1)),
+				Replicas:    nil,
+			},
+			expected: 1,
+		},
+		{
+			name: "`WorkerGroupSpec.Suspend` is true.",
+			spec: rayv1.WorkerGroupSpec{
+				NumOfHosts:  1,
+				MinReplicas: ptr.To(int32(5)),
+				MaxReplicas: ptr.To(int32(1)),
+				Suspend:     ptr.To(true),
+			},
+			expected: 0,
+		},
+		{
+			name: "`WorkerGroupSpec.NumOfHosts` is 3.",
+			spec: rayv1.WorkerGroupSpec{
+				NumOfHosts:  3,
+				MinReplicas: ptr.To(int32(1)),
+				MaxReplicas: ptr.To(int32(5)),
+				Replicas:    ptr.To(int32(5)),
+				Suspend:     ptr.To(false),
+			},
+			expected: 15,
+		},
 	}
-	assert.Equal(t, GetWorkerGroupDesiredReplicas(ctx, workerGroupSpec), minReplicas)
 
-	// Test 2: `WorkerGroupSpec.Replicas` is not nil and is within the range.
-	replicas := int32(3)
-	workerGroupSpec.Replicas = &replicas
-	assert.Equal(t, GetWorkerGroupDesiredReplicas(ctx, workerGroupSpec), replicas)
-
-	// Test 3: `WorkerGroupSpec.Replicas` is not nil but is more than maxReplicas.
-	replicas = int32(6)
-	workerGroupSpec.Replicas = &replicas
-	assert.Equal(t, GetWorkerGroupDesiredReplicas(ctx, workerGroupSpec), maxReplicas)
-
-	// Test 4: `WorkerGroupSpec.Replicas` is not nil but is less than minReplicas.
-	replicas = int32(0)
-	workerGroupSpec.Replicas = &replicas
-	assert.Equal(t, GetWorkerGroupDesiredReplicas(ctx, workerGroupSpec), minReplicas)
-
-	// Test 5: `WorkerGroupSpec.Replicas` is nil and minReplicas is less than maxReplicas.
-	workerGroupSpec.Replicas = nil
-	workerGroupSpec.MinReplicas = &maxReplicas
-	workerGroupSpec.MaxReplicas = &minReplicas
-	assert.Equal(t, GetWorkerGroupDesiredReplicas(ctx, workerGroupSpec), *workerGroupSpec.MaxReplicas)
-
-	// Test 6: `WorkerGroupSpec.Suspend` is true.
-	suspend := true
-	workerGroupSpec.MinReplicas = &maxReplicas
-	workerGroupSpec.MaxReplicas = &minReplicas
-	workerGroupSpec.Suspend = &suspend
-	assert.Zero(t, GetWorkerGroupDesiredReplicas(ctx, workerGroupSpec))
-
-	// Test 7: `WorkerGroupSpec.NumOfHosts` is 3.
-	numOfHosts = int32(3)
-	replicas = int32(5)
-	suspend = false
-	workerGroupSpec.NumOfHosts = numOfHosts
-	workerGroupSpec.Replicas = &replicas
-	workerGroupSpec.Suspend = &suspend
-	workerGroupSpec.MinReplicas = &minReplicas
-	workerGroupSpec.MaxReplicas = &maxReplicas
-	assert.Equal(t, GetWorkerGroupDesiredReplicas(ctx, workerGroupSpec), replicas*numOfHosts)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := GetWorkerGroupDesiredReplicas(ctx, tt.spec)
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
 }
 
 func TestCalculateMinReplicas(t *testing.T) {
