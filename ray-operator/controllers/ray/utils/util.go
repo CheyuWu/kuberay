@@ -363,7 +363,7 @@ func CalculateMinReplicas(cluster *rayv1.RayCluster) int32 {
 		if nodeGroup.Suspend != nil && *nodeGroup.Suspend {
 			continue
 		}
-		count += *nodeGroup.MinReplicas
+		count += (*nodeGroup.MinReplicas * nodeGroup.NumOfHosts)
 	}
 
 	return count
@@ -376,7 +376,7 @@ func CalculateMaxReplicas(cluster *rayv1.RayCluster) int32 {
 		if nodeGroup.Suspend != nil && *nodeGroup.Suspend {
 			continue
 		}
-		count += *nodeGroup.MaxReplicas
+		count += (*nodeGroup.MaxReplicas * nodeGroup.NumOfHosts)
 	}
 
 	return count

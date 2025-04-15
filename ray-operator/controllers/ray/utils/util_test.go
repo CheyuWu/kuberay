@@ -580,47 +580,119 @@ func TestGetWorkerGroupDesiredReplicas(t *testing.T) {
 }
 
 func TestCalculateMinReplicas(t *testing.T) {
-	// Test 1
-	minReplicas := int32(1)
-	rayCluster := &rayv1.RayCluster{
-		Spec: rayv1.RayClusterSpec{
-			WorkerGroupSpecs: []rayv1.WorkerGroupSpec{
+	suspend := true
+
+	tests := []struct {
+		name     string
+		specs    []rayv1.WorkerGroupSpec
+		expected int32
+	}{
+		{
+			name: "Single group with one host",
+			specs: []rayv1.WorkerGroupSpec{
 				{
-					MinReplicas: &minReplicas,
+					NumOfHosts:  1,
+					MinReplicas: ptr.To[int32](2),
 				},
 			},
+			expected: 2,
+		},
+		{
+			name: "Single group with three host",
+			specs: []rayv1.WorkerGroupSpec{
+				{
+					NumOfHosts:  3,
+					MinReplicas: ptr.To[int32](2),
+				},
+			},
+			expected: 6,
+		},
+		{
+			name: "Two groups with suspended",
+			specs: []rayv1.WorkerGroupSpec{
+				{
+					NumOfHosts:  1,
+					MinReplicas: ptr.To[int32](3),
+					Suspend:     &suspend,
+				},
+				{
+					NumOfHosts:  1,
+					MinReplicas: ptr.To[int32](1),
+					Suspend:     &suspend,
+				},
+			},
+			expected: 0,
 		},
 	}
-	assert.Equal(t, CalculateMinReplicas(rayCluster), minReplicas)
 
-	// Test 2
-	suspend := true
-	for i := range rayCluster.Spec.WorkerGroupSpecs {
-		rayCluster.Spec.WorkerGroupSpecs[i].Suspend = &suspend
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := &rayv1.RayCluster{
+				Spec: rayv1.RayClusterSpec{
+					WorkerGroupSpecs: tt.specs,
+				},
+			}
+			assert.Equal(t, tt.expected, CalculateMinReplicas(cluster))
+		})
 	}
-	assert.Zero(t, CalculateMinReplicas(rayCluster))
 }
 
 func TestCalculateMaxReplicas(t *testing.T) {
-	// Test 1
-	maxReplicas := int32(1)
-	rayCluster := &rayv1.RayCluster{
-		Spec: rayv1.RayClusterSpec{
-			WorkerGroupSpecs: []rayv1.WorkerGroupSpec{
+	suspend := true
+
+	tests := []struct {
+		name     string
+		specs    []rayv1.WorkerGroupSpec
+		expected int32
+	}{
+		{
+			name: "Single group with one host",
+			specs: []rayv1.WorkerGroupSpec{
 				{
-					MaxReplicas: &maxReplicas,
+					NumOfHosts:  1,
+					MaxReplicas: ptr.To[int32](3),
 				},
 			},
+			expected: 3,
+		},
+		{
+			name: "Single group with three host",
+			specs: []rayv1.WorkerGroupSpec{
+				{
+					NumOfHosts:  3,
+					MaxReplicas: ptr.To[int32](3),
+				},
+			},
+			expected: 9,
+		},
+		{
+			name: "Two groups with suspended",
+			specs: []rayv1.WorkerGroupSpec{
+				{
+					NumOfHosts:  1,
+					MaxReplicas: ptr.To[int32](3),
+					Suspend:     &suspend,
+				},
+				{
+					NumOfHosts:  1,
+					MaxReplicas: ptr.To[int32](1),
+					Suspend:     &suspend,
+				},
+			},
+			expected: 0,
 		},
 	}
-	assert.Equal(t, CalculateMaxReplicas(rayCluster), maxReplicas)
 
-	// Test 2
-	suspend := true
-	for i := range rayCluster.Spec.WorkerGroupSpecs {
-		rayCluster.Spec.WorkerGroupSpecs[i].Suspend = &suspend
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := &rayv1.RayCluster{
+				Spec: rayv1.RayClusterSpec{
+					WorkerGroupSpecs: tt.specs,
+				},
+			}
+			assert.Equal(t, tt.expected, CalculateMaxReplicas(cluster))
+		})
 	}
-	assert.Zero(t, CalculateMaxReplicas(rayCluster))
 }
 
 func TestCalculateDesiredReplicas(t *testing.T) {
