@@ -71,7 +71,7 @@ func TestCreatePodGroup(t *testing.T) {
 						Spec: workerSpec,
 					},
 					Replicas:    ptr.To[int32](2),
-					NumOfHosts:  1,
+					NumOfHosts:  2,
 					MinReplicas: ptr.To[int32](1),
 					MaxReplicas: ptr.To[int32](4),
 				},
@@ -85,8 +85,8 @@ func TestCreatePodGroup(t *testing.T) {
 
 	a.Equal(cluster.Namespace, pg.Namespace)
 
-	// 1 head + 2 workers (desired, not min replicas)
-	a.Equal(int32(3), pg.Spec.MinMember)
+	// 2 workers (desired, not min replicas) * 2 (num of hosts) + 1 head = 5
+	a.Equal(int32(5), pg.Spec.MinMember)
 
 	// 256m * 3 (requests, not limits)
 	a.Equal("768m", pg.Spec.MinResources.Cpu().String())
