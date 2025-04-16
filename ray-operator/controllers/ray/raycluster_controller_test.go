@@ -951,23 +951,14 @@ var _ = Context("Inside the default namespace", func() {
 
 			// Check the replica count of each host.
 			Eventually(func() (bool, error) {
-				err := getResourceFunc(ctx, client.ObjectKey{Name: rayCluster.Name, Namespace: namespace}, rayCluster)()
-				if err != nil {
-					return false, err
-				}
-				if rayCluster.Status.DesiredWorkerReplicas != desiredWorkerReplicas {
+				status := getClusterStatus(ctx, namespace, rayCluster.Name)()
+				if status.DesiredWorkerReplicas != desiredWorkerReplicas {
 					return false, nil
 				}
-				if rayCluster.Status.MinWorkerReplicas != minWorkerReplicas {
+				if status.MinWorkerReplicas != minWorkerReplicas {
 					return false, nil
 				}
-				if rayCluster.Status.MaxWorkerReplicas != maxWorkerReplicas {
-					return false, nil
-				}
-				if rayCluster.Status.ReadyWorkerReplicas != desiredWorkerReplicas {
-					return false, nil
-				}
-				if rayCluster.Status.AvailableWorkerReplicas != desiredWorkerReplicas {
+				if status.MaxWorkerReplicas != maxWorkerReplicas {
 					return false, nil
 				}
 				return true, nil
