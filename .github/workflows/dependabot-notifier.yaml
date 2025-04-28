@@ -1,0 +1,71 @@
+name: Dependabot Upgrade Monitor
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  monitor-dependabot:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if PR is failing
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            if (pr.data.mergeable_state !== "clean") {
+              core.setFailed("PR is not mergeable");
+            }
+
+      - name: Create issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Dependabot upgrade failed: #${context.issue.number}`,
+              body: `Dependabot PR #${context.issue.number} failed.\n\nLink: ${context.payload.pull_request.html_url}`,
+              labels: ["dependencies", "enhancement", "go"],
+            });
+
+      - name: Assign maintainers on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Step 1: Get collaborators
+            const collaborators = await github.paginate(
+              github.rest.repos.listCollaborators,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                affiliation: 'direct',
+                per_page: 100
+              }
+            );
+
+            // Step 2: Filter maintainers
+            const maintainers = collaborators
+              .filter(user => user.permissions.admin)
+              .map(user => user.login);
+
+            // Step 3: Assign to the PR
+            if (maintainers.length > 0) {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                assignees: maintainers,
+              });
+            } else {
+              console.log("No maintainers found to assign.");
+            }
