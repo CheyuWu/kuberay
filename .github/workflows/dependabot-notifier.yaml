@@ -6,7 +6,6 @@ on:
 
 jobs:
   monitor-dependabot:
-    if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Check if PR is failing
