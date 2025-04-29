@@ -71,6 +71,38 @@ func rayJobTemplate(name string, namespace string) *rayv1.RayJob {
 											corev1.ResourceMemory: resource.MustParse("2Gi"),
 										},
 									},
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+									
 									Ports: []corev1.ContainerPort{
 										{
 											Name:          utils.GcsServerPortName,
