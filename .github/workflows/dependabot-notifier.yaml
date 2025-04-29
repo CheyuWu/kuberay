@@ -34,13 +34,9 @@ jobs:
               core.setFailed("No status checks found for this PR.");
               return;
             }
-
-
             const failedChecks = checkRuns.filter(
               check => check.status === 'completed' && check.conclusion !== 'success'
             );
-
-
             if (failedChecks.length > 0) {
               console.log("Some checks failed:");
               failedChecks.forEach(check => {
@@ -58,8 +54,16 @@ jobs:
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: `Dependabot upgrade failed: #${context.issue.number}`,
-              body: `Dependabot PR #${context.issue.number} failed.\n\nLink: ${context.payload.pull_request.html_url}`,
+              title: `Failed to merge Dependabot PR #${context.issue.number}`,
+              body: `
+              🚨 **Dependabot Upgrade Failed**
+
+              The following Dependabot pull request could not be merged automatically due to failed or incomplete status checks:
+
+              - **PR:** [#${context.issue.number}](${context.payload.pull_request.html_url})
+              - **Status:** Not mergeable
+
+              Please review the PR and resolve any conflicts or CI issues to proceed with the upgrade.`,
               labels: ["dependencies", "enhancement", "go"],
             });
 
