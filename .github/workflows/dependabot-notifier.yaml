@@ -13,14 +13,27 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const pr = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-            });
+            const pull_number = context.issue.number;
+            const maxRetries = 5;
+            const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-            if (pr.data.mergeable_state !== "clean") {
-              core.setFailed("PR is not mergeable");
+            let mergeableState = "unknown";
+            for (let i = 0; i < maxRetries; i++) {
+              const pr = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number,
+              });
+
+              mergeableState = pr.data.mergeable_state;
+              console.log(`Attempt ${i + 1}: mergeable_state = ${mergeableState}`);
+
+              if (mergeableState !== "unknown") break;
+              await delay(2000); // Wait for 2 seconds before retrying
+            }
+
+            if (mergeableState !== "clean") {
+              core.setFailed(`PR is not mergeable (state: ${mergeableState})`);
             }
 
       - name: Create issue on failure
