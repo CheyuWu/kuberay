@@ -2,7 +2,7 @@ name: Dependabot Upgrade Monitor
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, synchronize]
 
 jobs:
   monitor-dependabot:
@@ -13,6 +13,8 @@ jobs:
         with:
           ignoreActions: monitor-dependabot
           checkInterval: 60
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Check if PR is failing
         id: check
