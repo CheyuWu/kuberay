@@ -30,7 +30,6 @@ jobs:
               ref: sha,
             });
             const checkRuns = checkRunsData.check_runs;
-      
             if (checkRuns.length === 0) {
               core.setFailed("No status checks found for this PR.");
               return;
