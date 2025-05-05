@@ -48,6 +48,27 @@ jobs:
                 console.log(`- ${check.name}: ${check.conclusion}`);
               });
               core.setFailed("Some required checks did not pass.");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+              
             } else {
               console.log("All checks passed.");
             }
