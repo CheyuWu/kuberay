@@ -1,7 +1,10 @@
 name: Dependabot Upgrade Monitor
 
 on:
-  pull_request_target:
+  # Use the `pull_request` event to trigger the workflow when a PR is opened or updated.
+  # If we use `pull_request_target`, workflows from forked PRs won't run properly
+  # and we cannot use the default GITHUB_TOKEN securely.
+  pull_request:
     types: [opened, synchronize]
 
 jobs:
