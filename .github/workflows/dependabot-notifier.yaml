@@ -1,7 +1,11 @@
 name: Dependabot Upgrade Monitor
 
 on:
-  pull_request:
+  # Use `pull_request_target` instead of `pull_request` because we need write permissions
+  # to perform actions like assigning a maintainer and creating issues.
+  # Note: This runs in the context of the base repository, so be cautious with untrusted code.
+  # https://stackoverflow.com/questions/74957218/what-is-the-difference-between-pull-request-and-pull-request-target-event-in-git
+  pull_request_target:
     types: [opened, synchronize]
 
 jobs:
@@ -73,30 +77,10 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            // Step 1: Get collaborators
-            const collaborators = await github.paginate(
-              github.rest.repos.listCollaborators,
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                affiliation: 'direct',
-                per_page: 100
-              }
-            );
-
-            // Step 2: Filter maintainers
-            const maintainers = collaborators
-              .filter(user => user.permissions.admin)
-              .map(user => user.login);
-
-            // Step 3: Assign to the PR
-            if (maintainers.length > 0) {
-              await github.rest.issues.addAssignees({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                assignees: maintainers,
-              });
-            } else {
-              console.warn("No maintainers found to assign.");
-            }
+            const maintainers = ["dentiny"];
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              assignees: maintainers,
+            });
