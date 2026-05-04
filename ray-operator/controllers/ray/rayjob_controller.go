@@ -354,7 +354,7 @@ func (r *RayJobReconciler) Reconcile(ctx context.Context, request ctrl.Request) 
 		if jobInfo.EndTime != 0 {
 			rayJobInstance.Status.RayJobStatusInfo.EndTime = &metav1.Time{Time: time.UnixMilli(utils.SafeUint64ToInt64(jobInfo.EndTime))}
 		}
-	case rayv1.JobDeploymentStatusSuspending, rayv1.JobDeploymentStatusRetrying:
+	case rayv1.JobDeploymentStatusSuspending:
 		// The `suspend` operation should be atomic. In other words, if users set the `suspend` flag to true and then immediately
 		// set it back to false, either all of the RayJob's associated resources should be cleaned up, or no resources should be
 		// cleaned up at all. To keep the atomicity, if a RayJob is in the `Suspending` status, we should delete all of its
@@ -387,11 +387,64 @@ func (r *RayJobReconciler) Reconcile(ctx context.Context, request ctrl.Request) 
 		rayJobInstance.Status.RayJobStatusInfo = rayv1.RayJobStatusInfo{}
 		// Reset the JobStatus to JobStatusNew and transition the JobDeploymentStatus to `Suspended`.
 		rayJobInstance.Status.JobStatus = rayv1.JobStatusNew
+		rayJobInstance.Status.JobDeploymentStatus = rayv1.JobDeploymentStatusSuspended
+	case rayv1.JobDeploymentStatusRetrying:
+		if rayJobInstance.Spec.RetryRayClusterStrategy == rayv1.ReuseRayCluster {
+			// ReuseRayCluster: keep the existing RayCluster alive on retry.
+			// Only delete the submitter Job (K8sJobMode) so a new one can be created on the next attempt.
+			// The DashboardURL is preserved because the cluster has not changed.
+			logger.Info("RetryRayClusterStrategy=ReuseRayCluster: preserving RayCluster, only deleting submitter job",
+				"rayClusterName", rayJobInstance.Status.RayClusterName)
+			r.Recorder.Eventf(rayJobInstance, corev1.EventTypeNormal, string(utils.UpdatedRayCluster),
+				"Retry strategy=ReuseRayCluster, preserving rayClusterName=%s", rayJobInstance.Status.RayClusterName)
 
-		if rayJobInstance.Status.JobDeploymentStatus == rayv1.JobDeploymentStatusSuspending {
-			rayJobInstance.Status.JobDeploymentStatus = rayv1.JobDeploymentStatusSuspended
-		}
-		if rayJobInstance.Status.JobDeploymentStatus == rayv1.JobDeploymentStatusRetrying {
+			isJobDeleted, err := r.deleteSubmitterJob(ctx, rayJobInstance)
+			if err != nil {
+				return ctrl.Result{RequeueAfter: RayJobDefaultRequeueDuration}, err
+			}
+			if !isJobDeleted {
+				logger.Info("Waiting for the submitter Job to be deleted before retrying.")
+				return ctrl.Result{RequeueAfter: RayJobDefaultRequeueDuration}, nil
+			}
+
+			// Reset only per-attempt submission state; keep RayClusterName and DashboardURL.
+			// TODO: Evaluate whether JobId should be regenerated here or in initRayJobStatusIfNeed.
+			rayJobInstance.Status.JobId = ""
+			rayJobInstance.Status.Message = ""
+			rayJobInstance.Status.Reason = ""
+			rayJobInstance.Status.RayJobStatusInfo = rayv1.RayJobStatusInfo{}
+			rayJobInstance.Status.JobStatus = rayv1.JobStatusNew
+			rayJobInstance.Status.JobDeploymentStatus = rayv1.JobDeploymentStatusNew
+		} else {
+			// RecreateRayCluster (default): delete both the RayCluster and the submitter Job.
+			logger.Info("RetryRayClusterStrategy=RecreateRayCluster (default): deleting RayCluster and submitter job",
+				"rayClusterName", rayJobInstance.Status.RayClusterName)
+			r.Recorder.Eventf(rayJobInstance, corev1.EventTypeNormal, string(utils.DeletedRayCluster),
+				"Retry strategy=RecreateRayCluster, deleting cluster=%s", rayJobInstance.Status.RayClusterName)
+
+			isClusterDeleted, err := r.deleteClusterResources(ctx, rayJobInstance)
+			if err != nil {
+				return ctrl.Result{RequeueAfter: RayJobDefaultRequeueDuration}, err
+			}
+			isJobDeleted, err := r.deleteSubmitterJob(ctx, rayJobInstance)
+			if err != nil {
+				return ctrl.Result{RequeueAfter: RayJobDefaultRequeueDuration}, err
+			}
+			if !isClusterDeleted || !isJobDeleted {
+				logger.Info("The release of the compute resources has not been completed yet. " +
+					"Wait for the resources to be deleted before the status transitions to avoid a resource leak.")
+				return ctrl.Result{RequeueAfter: RayJobDefaultRequeueDuration}, nil
+			}
+
+			// Reset the RayCluster and Ray job related status.
+			rayJobInstance.Status.RayClusterStatus = rayv1.RayClusterStatus{}
+			rayJobInstance.Status.RayClusterName = ""
+			rayJobInstance.Status.DashboardURL = ""
+			rayJobInstance.Status.JobId = ""
+			rayJobInstance.Status.Message = ""
+			rayJobInstance.Status.Reason = ""
+			rayJobInstance.Status.RayJobStatusInfo = rayv1.RayJobStatusInfo{}
+			rayJobInstance.Status.JobStatus = rayv1.JobStatusNew
 			rayJobInstance.Status.JobDeploymentStatus = rayv1.JobDeploymentStatusNew
 		}
 	case rayv1.JobDeploymentStatusSuspended:

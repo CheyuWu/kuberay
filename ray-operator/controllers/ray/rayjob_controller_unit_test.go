@@ -14,10 +14,12 @@ import (
 	"go.uber.org/mock/gomock"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	clientFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -821,6 +823,220 @@ func TestBatchSchedulerOnCompletionCalledWhenRayJobComplete(t *testing.T) {
 				}
 				assert.True(t, foundEvent, "Expected event %q to be emitted", tc.expectCleanupEvent)
 			}
+		})
+	}
+}
+
+// TestRetryRayClusterStrategyReuseRayCluster verifies that when RetryRayClusterStrategy=ReuseRayCluster,
+// the controller preserves the RayCluster (name and dashboardURL) on retry and only resets per-attempt state.
+func TestRetryRayClusterStrategyReuseRayCluster(t *testing.T) {
+	newScheme := runtime.NewScheme()
+	_ = rayv1.AddToScheme(newScheme)
+	_ = batchv1.AddToScheme(newScheme)
+	_ = corev1.AddToScheme(newScheme)
+
+	clusterName := "existing-raycluster"
+	dashboardURL := "http://existing-dashboard"
+	jobID := "old-job-id"
+
+	rayJob := &rayv1.RayJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-rayjob-reuse",
+			Namespace: "default",
+		},
+		Spec: rayv1.RayJobSpec{
+			SubmissionMode:          rayv1.K8sJobMode,
+			RetryRayClusterStrategy: rayv1.ReuseRayCluster,
+			BackoffLimit:            ptr.To[int32](1),
+			RayClusterSpec: &rayv1.RayClusterSpec{
+				HeadGroupSpec: rayv1.HeadGroupSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{Image: "rayproject/ray"}},
+						},
+					},
+				},
+			},
+		},
+		Status: rayv1.RayJobStatus{
+			JobDeploymentStatus: rayv1.JobDeploymentStatusRetrying,
+			RayClusterName:      clusterName,
+			DashboardURL:        dashboardURL,
+			JobId:               jobID,
+			JobStatus:           rayv1.JobStatusFailed,
+			Message:             "previous failure message",
+			Reason:              rayv1.AppFailed,
+			Failed:              ptr.To[int32](1),
+		},
+	}
+
+	// Existing submitter Job to be deleted on retry.
+	submitterJob := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-rayjob-reuse",
+			Namespace: "default",
+		},
+	}
+
+	fakeClient := clientFake.NewClientBuilder().
+		WithScheme(newScheme).
+		WithRuntimeObjects(rayJob, submitterJob).
+		WithStatusSubresource(rayJob).
+		Build()
+
+	recorder := record.NewFakeRecorder(100)
+
+	reconciler := &RayJobReconciler{
+		Client:   fakeClient,
+		Recorder: recorder,
+		Scheme:   newScheme,
+	}
+
+	ctx := context.Background()
+	req := reconcile.Request{NamespacedName: types.NamespacedName{Name: rayJob.Name, Namespace: rayJob.Namespace}}
+
+	// First reconcile: the submitter Job exists, so deleteSubmitterJob deletes it but returns false
+	// (indicating deletion is still in progress), causing an early return.
+	_, err := reconciler.Reconcile(ctx, req)
+	require.NoError(t, err)
+
+	// The submitter Job should now be deleted from the fake store.
+	deletedJob := &batchv1.Job{}
+	jobErr := fakeClient.Get(ctx, types.NamespacedName{Name: rayJob.Name, Namespace: rayJob.Namespace}, deletedJob)
+	assert.True(t, apierrors.IsNotFound(jobErr), "Submitter Job should have been deleted after first reconcile")
+
+	// Second reconcile: submitter Job is not found → isJobDeleted=true, so we proceed to reset state.
+	_, err = reconciler.Reconcile(ctx, req)
+	require.NoError(t, err)
+
+	// Re-fetch the RayJob status to verify per-attempt state was reset.
+	updatedRayJob := &rayv1.RayJob{}
+	err = fakeClient.Get(ctx, types.NamespacedName{Name: rayJob.Name, Namespace: rayJob.Namespace}, updatedRayJob)
+	require.NoError(t, err)
+
+	// RayClusterName and DashboardURL should be preserved (cluster was not deleted).
+	assert.Equal(t, clusterName, updatedRayJob.Status.RayClusterName, "RayClusterName should be preserved with ReuseRayCluster")
+	assert.Equal(t, dashboardURL, updatedRayJob.Status.DashboardURL, "DashboardURL should be preserved with ReuseRayCluster")
+
+	// Per-attempt state should be reset.
+	assert.Empty(t, updatedRayJob.Status.JobId, "JobId should be reset on retry")
+	assert.Empty(t, updatedRayJob.Status.Message, "Message should be reset on retry")
+	assert.Empty(t, string(updatedRayJob.Status.Reason), "Reason should be reset on retry")
+	assert.Equal(t, rayv1.JobStatusNew, updatedRayJob.Status.JobStatus, "JobStatus should be reset to New")
+
+	// JobDeploymentStatus should transition to New to trigger re-initialization.
+	assert.Equal(t, rayv1.JobDeploymentStatusNew, updatedRayJob.Status.JobDeploymentStatus, "JobDeploymentStatus should transition to New")
+}
+
+// TestRetryRayClusterStrategyRecreateRayCluster verifies that when RetryRayClusterStrategy is empty (default)
+// or set to RecreateRayCluster, the controller deletes the RayCluster and resets all state on retry.
+func TestRetryRayClusterStrategyRecreateRayCluster(t *testing.T) {
+	newScheme := runtime.NewScheme()
+	_ = rayv1.AddToScheme(newScheme)
+	_ = batchv1.AddToScheme(newScheme)
+	_ = corev1.AddToScheme(newScheme)
+
+	clusterName := "existing-raycluster"
+
+	tests := []struct {
+		name     string
+		strategy rayv1.RetryRayClusterStrategyType
+	}{
+		{
+			name:     "empty strategy (default) deletes RayCluster",
+			strategy: "",
+		},
+		{
+			name:     "RecreateRayCluster deletes RayCluster",
+			strategy: rayv1.RecreateRayCluster,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rayCluster := &rayv1.RayCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clusterName,
+					Namespace: "default",
+				},
+			}
+			rayJob := &rayv1.RayJob{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rayjob-recreate",
+					Namespace: "default",
+				},
+				Spec: rayv1.RayJobSpec{
+					SubmissionMode:          rayv1.K8sJobMode,
+					RetryRayClusterStrategy: tc.strategy,
+					BackoffLimit:            ptr.To[int32](1),
+					RayClusterSpec: &rayv1.RayClusterSpec{
+						HeadGroupSpec: rayv1.HeadGroupSpec{
+							Template: corev1.PodTemplateSpec{
+								Spec: corev1.PodSpec{
+									Containers: []corev1.Container{{Image: "rayproject/ray"}},
+								},
+							},
+						},
+					},
+				},
+				Status: rayv1.RayJobStatus{
+					JobDeploymentStatus: rayv1.JobDeploymentStatusRetrying,
+					RayClusterName:      clusterName,
+					DashboardURL:        "http://dashboard",
+					JobId:               "old-job-id",
+					JobStatus:           rayv1.JobStatusFailed,
+					Message:             "previous failure",
+					Reason:              rayv1.AppFailed,
+					Failed:              ptr.To[int32](1),
+				},
+			}
+
+			fakeClient := clientFake.NewClientBuilder().
+				WithScheme(newScheme).
+				WithRuntimeObjects(rayJob, rayCluster).
+				WithStatusSubresource(rayJob).
+				Build()
+
+			recorder := record.NewFakeRecorder(100)
+
+			reconciler := &RayJobReconciler{
+				Client:   fakeClient,
+				Recorder: recorder,
+				Scheme:   newScheme,
+			}
+
+			ctx := context.Background()
+			req := reconcile.Request{NamespacedName: types.NamespacedName{Name: rayJob.Name, Namespace: rayJob.Namespace}}
+
+			// First reconcile: the RayCluster exists → deleteClusterResources deletes it but
+			// returns false (deletion in progress), causing an early return.
+			_, err := reconciler.Reconcile(ctx, req)
+			require.NoError(t, err)
+
+			// The RayCluster should now be deleted from the fake store.
+			deletedCluster := &rayv1.RayCluster{}
+			clusterErr := fakeClient.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: "default"}, deletedCluster)
+			assert.True(t, apierrors.IsNotFound(clusterErr), "RayCluster should have been deleted after first reconcile")
+
+			// Second reconcile: both cluster and job are not found → proceed to reset state.
+			_, err = reconciler.Reconcile(ctx, req)
+			require.NoError(t, err)
+
+			// Re-fetch the RayJob status.
+			updatedRayJob := &rayv1.RayJob{}
+			err = fakeClient.Get(ctx, types.NamespacedName{Name: rayJob.Name, Namespace: rayJob.Namespace}, updatedRayJob)
+			require.NoError(t, err)
+
+			// RayClusterName and DashboardURL should be cleared.
+			assert.Empty(t, updatedRayJob.Status.RayClusterName, "RayClusterName should be cleared with RecreateRayCluster")
+			assert.Empty(t, updatedRayJob.Status.DashboardURL, "DashboardURL should be cleared with RecreateRayCluster")
+
+			// All per-attempt status should be reset.
+			assert.Empty(t, updatedRayJob.Status.JobId, "JobId should be reset on retry")
+			assert.Empty(t, updatedRayJob.Status.Message, "Message should be reset on retry")
+			assert.Empty(t, string(updatedRayJob.Status.Reason), "Reason should be reset on retry")
+			assert.Equal(t, rayv1.JobStatusNew, updatedRayJob.Status.JobStatus, "JobStatus should be reset to New")
+			assert.Equal(t, rayv1.JobDeploymentStatusNew, updatedRayJob.Status.JobDeploymentStatus, "JobDeploymentStatus should transition to New")
 		})
 	}
 }

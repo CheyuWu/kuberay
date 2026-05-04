@@ -186,6 +186,22 @@ const (
 	DeleteNone    DeletionPolicyType = "DeleteNone"    // To delete no resources on job completion.
 )
 
+// RetryRayClusterStrategyType defines the strategy for managing the RayCluster during RayJob retries.
+// +kubebuilder:validation:Enum=RecreateRayCluster;ReuseRayCluster
+type RetryRayClusterStrategyType string
+
+const (
+	// RecreateRayCluster (default) deletes and recreates the RayCluster on every retry attempt.
+	// This preserves the original behavior.
+	RecreateRayCluster RetryRayClusterStrategyType = "RecreateRayCluster"
+
+	// ReuseRayCluster keeps the existing RayCluster alive during a retry and only resets
+	// per-attempt state (job ID, submission status, etc.) before resubmitting the Ray job.
+	// Only supported for K8sJobMode and HTTPMode.
+	// TODO: Validate that ReuseRayCluster is not combined with InteractiveMode, SidecarMode, or ClusterSelector.
+	ReuseRayCluster RetryRayClusterStrategyType = "ReuseRayCluster"
+)
+
 type SubmitterConfig struct {
 	// BackoffLimit of the submitter k8s job.
 	// +optional
@@ -296,6 +312,15 @@ type RayJobSpec struct {
 	// In case of transition to false a new RayCluster will be created.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
+	// RetryRayClusterStrategy controls how the RayCluster is managed during a RayJob retry.
+	// When set to "ReuseRayCluster", the existing RayCluster is kept alive on retry and only
+	// per-attempt submission state is reset, avoiding cluster startup overhead.
+	// When set to "RecreateRayCluster" (default, or when unset), the RayCluster is deleted and
+	// recreated on each retry attempt, preserving the original behavior.
+	// Only K8sJobMode and HTTPMode are supported for ReuseRayCluster.
+	// TODO: Add webhook validation to reject ReuseRayCluster with InteractiveMode, SidecarMode, or ClusterSelector.
+	// +optional
+	RetryRayClusterStrategy RetryRayClusterStrategyType `json:"retryRayClusterStrategy,omitempty"`
 }
 
 // RayJobStatus defines the observed state of RayJob
