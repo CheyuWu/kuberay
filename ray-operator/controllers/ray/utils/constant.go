@@ -375,6 +375,9 @@ const (
 	FailedToDeleteRayCluster      K8sEventType = "FailedToDeleteRayCluster"
 	FailedToUpdateRayCluster      K8sEventType = "FailedToUpdateRayCluster"
 	RayClusterNotFound            K8sEventType = "RayClusterNotFound"
+	// ReusingRayCluster is emitted when the controller preserves the RayCluster on retry
+	// because RetryRayClusterStrategy=ReuseRayCluster is set.
+	ReusingRayCluster K8sEventType = "ReusingRayCluster"
 
 	// Batch scheduler event list
 	BatchSchedulerCleanedUp       K8sEventType = "BatchSchedulerCleanedUp"

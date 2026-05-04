@@ -395,7 +395,7 @@ func (r *RayJobReconciler) Reconcile(ctx context.Context, request ctrl.Request) 
 			// The DashboardURL is preserved because the cluster has not changed.
 			logger.Info("RetryRayClusterStrategy=ReuseRayCluster: preserving RayCluster, only deleting submitter job",
 				"rayClusterName", rayJobInstance.Status.RayClusterName)
-			r.Recorder.Eventf(rayJobInstance, corev1.EventTypeNormal, string(utils.UpdatedRayCluster),
+			r.Recorder.Eventf(rayJobInstance, corev1.EventTypeNormal, string(utils.ReusingRayCluster),
 				"Retry strategy=ReuseRayCluster, preserving rayClusterName=%s", rayJobInstance.Status.RayClusterName)
 
 			isJobDeleted, err := r.deleteSubmitterJob(ctx, rayJobInstance)
@@ -408,7 +408,9 @@ func (r *RayJobReconciler) Reconcile(ctx context.Context, request ctrl.Request) 
 			}
 
 			// Reset only per-attempt submission state; keep RayClusterName and DashboardURL.
-			// TODO: Evaluate whether JobId should be regenerated here or in initRayJobStatusIfNeed.
+			// TODO: JobId is cleared here so that initRayJobStatusIfNeed generates a fresh one for
+			// the next attempt. A fresh ID avoids collisions with the previous (failed) Ray job on
+			// the same cluster. See https://github.com/ray-project/kuberay/issues/4668 for context.
 			rayJobInstance.Status.JobId = ""
 			rayJobInstance.Status.Message = ""
 			rayJobInstance.Status.Reason = ""
@@ -419,8 +421,6 @@ func (r *RayJobReconciler) Reconcile(ctx context.Context, request ctrl.Request) 
 			// RecreateRayCluster (default): delete both the RayCluster and the submitter Job.
 			logger.Info("RetryRayClusterStrategy=RecreateRayCluster (default): deleting RayCluster and submitter job",
 				"rayClusterName", rayJobInstance.Status.RayClusterName)
-			r.Recorder.Eventf(rayJobInstance, corev1.EventTypeNormal, string(utils.DeletedRayCluster),
-				"Retry strategy=RecreateRayCluster, deleting cluster=%s", rayJobInstance.Status.RayClusterName)
 
 			isClusterDeleted, err := r.deleteClusterResources(ctx, rayJobInstance)
 			if err != nil {
