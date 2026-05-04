@@ -819,6 +819,114 @@ var _ = Context("RayJob with different submission modes", func() {
 					time.Second*5, time.Millisecond*500).Should(Equal(int32(1)), "failed = %v", rayJob.Status.Failed)
 			})
 		})
+
+		Describe("Retrying RayJob in K8sJobMode with ReuseRayCluster", Ordered, func() {
+			ctx := context.Background()
+			namespace := "default"
+			rayJob := rayJobTemplate("rayjob-reuse-retry-test", namespace)
+			rayJob.Spec.BackoffLimit = ptr.To[int32](1)
+			rayJob.Spec.RetryRayClusterStrategy = rayv1.ReuseRayCluster
+			rayCluster := &rayv1.RayCluster{}
+			initialSubmitterUID := ""
+			initialRayClusterUID := ""
+			initialRayClusterName := ""
+			initialDashboardURL := ""
+			initialJobID := ""
+
+			It("Verify RayJob spec", func() {
+				Expect(rayJob.Spec.SubmissionMode).To(Equal(rayv1.K8sJobMode))
+				Expect(rayJob.Spec.RetryRayClusterStrategy).To(Equal(rayv1.ReuseRayCluster))
+				Expect(*rayJob.Spec.BackoffLimit).To(Equal(int32(1)))
+			})
+
+			It("Create a RayJob custom resource", func() {
+				err := k8sClient.Create(ctx, rayJob)
+				Expect(err).NotTo(HaveOccurred(), "Failed to create RayJob")
+				Eventually(
+					getResourceFunc(ctx, client.ObjectKey{Name: rayJob.Name, Namespace: namespace}, rayJob),
+					time.Second*3, time.Millisecond*500).Should(Succeed(), "Should be able to see RayJob: %v", rayJob.Name)
+			})
+
+			It("RayJob transitions to Running with a ready RayCluster", func() {
+				Eventually(
+					getRayJobDeploymentStatus(ctx, rayJob),
+					time.Second*3, time.Millisecond*500).Should(Equal(rayv1.JobDeploymentStatusInitializing), "JobDeploymentStatus = %v", rayJob.Status.JobDeploymentStatus)
+
+				Eventually(
+					getResourceFunc(ctx, client.ObjectKey{Name: rayJob.Status.RayClusterName, Namespace: namespace}, rayCluster),
+					time.Second*3, time.Millisecond*500).Should(Succeed(), "RayCluster %v not found", rayJob.Status.RayClusterName)
+
+				updateHeadPodToRunningAndReady(ctx, rayJob.Status.RayClusterName, namespace)
+				updateWorkerPodsToRunningAndReady(ctx, rayJob.Status.RayClusterName, namespace)
+
+				Eventually(
+					getClusterState(ctx, namespace, rayCluster.Name),
+					time.Second*3, time.Millisecond*500).Should(Equal(rayv1.Ready))
+
+				Eventually(
+					getRayJobDeploymentStatus(ctx, rayJob),
+					time.Second*3, time.Millisecond*500).Should(Equal(rayv1.JobDeploymentStatusRunning), "JobDeploymentStatus = %v", rayJob.Status.JobDeploymentStatus)
+
+				Expect(rayJob.Status.DashboardURL).NotTo(BeEmpty())
+				Expect(rayJob.Status.JobId).NotTo(BeEmpty())
+
+				namespacedName := common.RayJobK8sJobNamespacedName(rayJob)
+				job := &batchv1.Job{}
+				err := k8sClient.Get(ctx, namespacedName, job)
+				Expect(err).NotTo(HaveOccurred(), "failed to get Kubernetes Job")
+
+				initialSubmitterUID = string(job.UID)
+				initialRayClusterUID = string(rayCluster.UID)
+				initialRayClusterName = rayJob.Status.RayClusterName
+				initialDashboardURL = rayJob.Status.DashboardURL
+				initialJobID = rayJob.Status.JobId
+			})
+
+			It("Retry keeps the existing RayCluster and recreates only the submitter Job", func() {
+				//nolint:unparam // this is a mock and the function signature cannot change
+				getJobInfo := func(context.Context, string) (*utiltypes.RayJobInfo, error) {
+					return &utiltypes.RayJobInfo{JobStatus: rayv1.JobStatusFailed, EndTime: uint64(time.Now().UnixMilli())}, nil
+				}
+				fakeRayDashboardClient.GetJobInfoMock.Store(&getJobInfo)
+				defer fakeRayDashboardClient.GetJobInfoMock.Store(nil)
+
+				Consistently(
+					getRayJobDeploymentStatus(ctx, rayJob),
+					time.Second*3, time.Millisecond*500).Should(Equal(rayv1.JobDeploymentStatusRunning), "JobDeploymentStatus = %v", rayJob.Status.JobDeploymentStatus)
+
+				namespacedName := common.RayJobK8sJobNamespacedName(rayJob)
+				job := &batchv1.Job{}
+				err := k8sClient.Get(ctx, namespacedName, job)
+				Expect(err).NotTo(HaveOccurred(), "failed to get Kubernetes Job")
+				updateK8sJobToComplete(ctx, job)
+
+				// Wait for retry flow to finish and return to Running (attempt 2).
+				Eventually(
+					getRayJobDeploymentStatus(ctx, rayJob),
+					time.Second*8, time.Millisecond*500).Should(Equal(rayv1.JobDeploymentStatusRunning), "jobDeploymentStatus = %v", rayJob.Status.JobDeploymentStatus)
+
+				Expect(rayJob.Status.RayClusterName).To(Equal(initialRayClusterName))
+				Expect(rayJob.Status.DashboardURL).To(Equal(initialDashboardURL))
+				Expect(rayJob.Status.JobId).NotTo(BeEmpty())
+				Expect(rayJob.Status.JobId).NotTo(Equal(initialJobID))
+
+				// ReuseRayCluster should preserve the same RayCluster object (same UID).
+				currentRayCluster := &rayv1.RayCluster{}
+				Eventually(
+					getResourceFunc(ctx, client.ObjectKey{Name: initialRayClusterName, Namespace: namespace}, currentRayCluster),
+					time.Second*3, time.Millisecond*500).Should(Succeed(), "RayCluster %v should be preserved", initialRayClusterName)
+				Expect(string(currentRayCluster.UID)).To(Equal(initialRayClusterUID))
+
+				// Submitter Job should be recreated (new UID after retry cleanup).
+				Eventually(func() (string, error) {
+					currentJob := &batchv1.Job{}
+					if err := k8sClient.Get(ctx, namespacedName, currentJob); err != nil {
+						return "", err
+					}
+					return string(currentJob.UID), nil
+				}, time.Second*5, time.Millisecond*500).ShouldNot(Equal(initialSubmitterUID))
+			})
+		})
 	})
 
 	Context("RayJob in InteractiveMode", func() {
