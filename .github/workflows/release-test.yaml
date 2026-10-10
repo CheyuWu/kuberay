@@ -1,0 +1,68 @@
+name: Release test
+
+# Validates a published release candidate against the docs, samples, charts and Go modules on a kind
+# cluster. See release-test/README.md. Run it after the Helm charts for the tag are published.
+on:
+  workflow_dispatch:
+    inputs:
+      kuberay_version:
+        description: "The tag under test, for example v1.8.0-rc.0. Its Helm charts must be published."
+        required: true
+      items:
+        description: "Item ids to run, space separated. Empty runs every Item."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  release-test:
+    runs-on: ubuntu-latest
+    # The limit for a GitHub-hosted job. Split the Items over a matrix if a full run grows past it.
+    timeout-minutes: 360
+    env:
+      KUBERAY_VERSION: ${{ inputs.kuberay_version }}
+      # Failures are triaged with Claude only when the ANTHROPIC_API_KEY secret is set.
+      TRIAGE: ${{ secrets.ANTHROPIC_API_KEY != '' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: v1.26
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.14.0
+        with:
+          cluster_name: release-test
+
+      # The kubectl-plugin unit installs Ray into a venv with uv, which the runner image lacks.
+      - uses: astral-sh/setup-uv@v10
+
+      - name: Install Claude Code for triage
+        if: env.TRIAGE == '1'
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash -s 2.1.284
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run
+        env:
+          ITEMS: ${{ inputs.items }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # shellcheck disable=SC2086 # ITEMS is a list of ids
+          go run ./release-test run $ITEMS
+
+      - name: Summary
+        if: always()
+        run: |
+          go run ./release-test summary
+          cat "release-test/results/$KUBERAY_VERSION/SUMMARY.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-test-${{ inputs.kuberay_version }}
+          path: release-test/results

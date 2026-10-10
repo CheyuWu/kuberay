@@ -1,0 +1,441 @@
+# Everything a KubeRay release is validated against. Each Item gets its own row in
+# results/SUMMARY.md. Change this file when something to validate is added, moved or removed;
+# `go run ./release-test stale` then tells the plan skill which units to (re)write.
+#
+#   id         stable kebab-case slug, also the manifest unit id and the results/<id>/ directory
+#   source     a docs.ray.io page (the plan reads its markdown on ray master, following
+#              redirects) or a path in this repo
+#   procedure  for Items that are not a page or a sample: what to check, in prose
+#   requires   what a local kind cluster cannot provide: gpu, tpu, gke, eks, aks, gvisor.
+#              A non-empty list means a human runs the Item; the plan and the runner skip it.
+#              A page that only uses a cloud cluster as its example has no requires.
+#
+# Seeded from the v1.7.0 validation sheet: dead pages dropped, URLs moved to the kuberay/ docs
+# section, plus the pages and samples the sheet did not list.
+items:
+  # Docs: Getting started
+  - id: operator-installation
+    source: https://docs.ray.io/en/master/kuberay/getting-started/operator-installation.html
+  - id: raycluster-quick-start
+    source: https://docs.ray.io/en/master/kuberay/getting-started/raycluster-quick-start.html
+  - id: raycronjob-quick-start
+    source: https://docs.ray.io/en/master/kuberay/getting-started/raycronjob-quick-start.html
+  - id: rayjob-quick-start
+    source: https://docs.ray.io/en/master/kuberay/getting-started/rayjob-quick-start.html
+  - id: rayservice-quick-start
+    source: https://docs.ray.io/en/master/kuberay/getting-started/rayservice-quick-start.html
+
+  # Docs: User guides
+  - id: auth
+    source: https://docs.ray.io/en/master/kuberay/user-guides/auth.html
+  - id: auth-rbac
+    source: https://docs.ray.io/en/master/kuberay/user-guides/auth-rbac.html
+    requires: [gke]
+  - id: config
+    source: https://docs.ray.io/en/master/kuberay/user-guides/config.html
+  - id: configuring-autoscaling
+    source: https://docs.ray.io/en/master/kuberay/user-guides/configuring-autoscaling.html
+  - id: configuring-ippr
+    source: https://docs.ray.io/en/master/kuberay/user-guides/configuring-ippr.html
+  - id: dashboard
+    source: https://docs.ray.io/en/master/kuberay/user-guides/dashboard.html
+  - id: gcs-ft
+    source: https://docs.ray.io/en/master/kuberay/user-guides/gcs-ft.html
+  - id: gcs-persistent-ft
+    source: https://docs.ray.io/en/master/kuberay/user-guides/gcs-persistent-ft.html
+  - id: gcs-rocksdb-ft
+    source: https://docs.ray.io/en/master/kuberay/user-guides/gcs-rocksdb-ft.html
+  - id: gke-gcs-bucket
+    source: https://docs.ray.io/en/master/kuberay/user-guides/gke-gcs-bucket.html
+    requires: [gke]
+  - id: gpu
+    source: https://docs.ray.io/en/master/kuberay/user-guides/gpu.html
+    requires: [gpu]
+  - id: helm-chart-rbac
+    source: https://docs.ray.io/en/master/kuberay/user-guides/helm-chart-rbac.html
+  - id: history-server
+    source: https://docs.ray.io/en/master/kuberay/user-guides/history-server.html
+    requires: [gke]
+  - id: k8s-autoscaler
+    source: https://docs.ray.io/en/master/kuberay/user-guides/k8s-autoscaler.html
+  - id: k8s-events
+    source: https://docs.ray.io/en/master/kuberay/user-guides/k8s-events.html
+  - id: kubectl-plugin
+    source: https://docs.ray.io/en/master/kuberay/user-guides/kubectl-plugin.html
+  - id: label-based-scheduling
+    source: https://docs.ray.io/en/master/kuberay/user-guides/label-based-scheduling.html
+  - id: mtls
+    source: https://docs.ray.io/en/master/kuberay/user-guides/mtls.html
+  - id: network-policy
+    source: https://docs.ray.io/en/master/kuberay/user-guides/network-policy.html
+  - id: observability
+    source: https://docs.ray.io/en/master/kuberay/user-guides/observability.html
+  - id: persist-kuberay-custom-resource-logs
+    source: https://docs.ray.io/en/master/kuberay/user-guides/persist-kuberay-custom-resource-logs.html
+  - id: persist-kuberay-operator-logs
+    source: https://docs.ray.io/en/master/kuberay/user-guides/persist-kuberay-operator-logs.html
+  - id: pod-command
+    source: https://docs.ray.io/en/master/kuberay/user-guides/pod-command.html
+  - id: rayjob-sidecar-submitter-restart
+    source: https://docs.ray.io/en/master/kuberay/user-guides/rayjob-sidecar-submitter-restart.html
+  - id: rayservice
+    source: https://docs.ray.io/en/master/kuberay/user-guides/rayservice.html
+  - id: rayservice-high-availability
+    source: https://docs.ray.io/en/master/kuberay/user-guides/rayservice-high-availability.html
+  - id: rayservice-incremental-upgrade
+    source: https://docs.ray.io/en/master/kuberay/user-guides/rayservice-incremental-upgrade.html
+  - id: rayservice-no-ray-serve-replica
+    source: https://docs.ray.io/en/master/kuberay/user-guides/rayservice-no-ray-serve-replica.html
+  - id: reduce-image-pull-latency
+    source: https://docs.ray.io/en/master/kuberay/user-guides/reduce-image-pull-latency.html
+    requires: [gke]
+  - id: resource-isolation-with-writable-cgroups
+    source: https://docs.ray.io/en/master/kuberay/user-guides/resource-isolation-with-writable-cgroups.html
+    requires: [gke]
+  - id: serve-high-throughput
+    source: https://docs.ray.io/en/master/kuberay/user-guides/serve-high-throughput.html
+    requires: [gpu, gke]
+  - id: tls
+    source: https://docs.ray.io/en/master/kuberay/user-guides/tls.html
+  - id: tpu
+    source: https://docs.ray.io/en/master/kuberay/user-guides/tpu.html
+    requires: [tpu, gke]
+  - id: upgrade-guide
+    source: https://docs.ray.io/en/master/kuberay/user-guides/upgrade-guide.html
+  - id: uv
+    source: https://docs.ray.io/en/master/kuberay/user-guides/uv.html
+
+  # Docs: Kubernetes ecosystem
+  - id: ingress
+    source: https://docs.ray.io/en/master/kuberay/ecosystem/ingress.html
+  - id: istio
+    source: https://docs.ray.io/en/master/kuberay/ecosystem/istio.html
+  - id: kai-scheduler
+    source: https://docs.ray.io/en/master/kuberay/ecosystem/kai-scheduler.html
+    requires: [gpu]
+  - id: kueue
+    source: https://docs.ray.io/en/master/kuberay/ecosystem/kueue.html
+  - id: prometheus-grafana
+    source: https://docs.ray.io/en/master/kuberay/ecosystem/prometheus-grafana.html
+  - id: pyspy
+    source: https://docs.ray.io/en/master/kuberay/ecosystem/pyspy.html
+  - id: scheduler-plugins
+    source: https://docs.ray.io/en/master/kuberay/ecosystem/scheduler-plugins.html
+  - id: volcano
+    source: https://docs.ray.io/en/master/kuberay/ecosystem/volcano.html
+  - id: yunikorn
+    source: https://docs.ray.io/en/master/kuberay/ecosystem/yunikorn.html
+
+  # Docs: Examples
+  - id: argocd
+    source: https://docs.ray.io/en/master/kuberay/examples/argocd.html
+  - id: distributed-checkpointing-with-gcsfuse
+    source: https://docs.ray.io/en/master/kuberay/examples/distributed-checkpointing-with-gcsfuse.html
+    requires: [gpu, gke]
+  - id: mnist-training-example
+    source: https://docs.ray.io/en/master/kuberay/examples/mnist-training-example.html
+  - id: mobilenet-rayservice
+    source: https://docs.ray.io/en/master/kuberay/examples/mobilenet-rayservice.html
+  - id: ray-sandboxing
+    source: https://docs.ray.io/en/master/kuberay/examples/ray-sandboxing.html
+    requires: [gke, gvisor]
+  - id: rayjob-agent-sandbox
+    source: https://docs.ray.io/en/master/kuberay/examples/rayjob-agent-sandbox.html
+    requires: [gke, gvisor]
+  - id: rayjob-batch-inference-example
+    source: https://docs.ray.io/en/master/kuberay/examples/rayjob-batch-inference-example.html
+    requires: [gpu, gke]
+  - id: rayjob-kueue-gang-scheduling
+    source: https://docs.ray.io/en/master/kuberay/examples/rayjob-kueue-gang-scheduling.html
+    requires: [gpu, gke]
+  - id: rayjob-kueue-priority-scheduling
+    source: https://docs.ray.io/en/master/kuberay/examples/rayjob-kueue-priority-scheduling.html
+    requires: [gpu]
+  - id: rayserve-deepseek-example
+    source: https://docs.ray.io/en/master/kuberay/examples/rayserve-deepseek-example.html
+    requires: [gpu]
+  - id: rayserve-llm-example
+    source: https://docs.ray.io/en/master/kuberay/examples/rayserve-llm-example.html
+    requires: [gpu]
+  - id: stable-diffusion-rayservice
+    source: https://docs.ray.io/en/master/kuberay/examples/stable-diffusion-rayservice.html
+    requires: [gpu]
+  - id: text-summarizer-rayservice
+    source: https://docs.ray.io/en/master/kuberay/examples/text-summarizer-rayservice.html
+    requires: [gpu]
+  - id: tpu-serve-stable-diffusion
+    source: https://docs.ray.io/en/master/kuberay/examples/tpu-serve-stable-diffusion.html
+    requires: [tpu, gke]
+  - id: verl-post-training
+    source: https://docs.ray.io/en/master/kuberay/examples/verl-post-training.html
+    requires: [gpu, gke]
+
+  # Samples: RayCluster
+  - id: agent-sandbox-ray-cluster
+    source: ray-operator/config/samples/agent-sandbox/ray-cluster.yaml
+    requires: [gvisor]
+  - id: ray-cluster-agc-gatewayapi
+    source: ray-operator/config/samples/ray-cluster-agc-gatewayapi.yaml
+    requires: [aks]
+  - id: ray-cluster-alb-ingress
+    source: ray-operator/config/samples/ray-cluster-alb-ingress.yaml
+    requires: [eks]
+  - id: ray-cluster-label-selector
+    source: ray-operator/config/samples/ray-cluster-label-selector.yaml
+  - id: ray-cluster-resource-isolation-with-overrides-gke
+    source: ray-operator/config/samples/ray-cluster-resource-isolation-with-overrides.gke.yaml
+    requires: [gke]
+  - id: ray-cluster-resource-isolation-gke
+    source: ray-operator/config/samples/ray-cluster-resource-isolation.gke.yaml
+    requires: [gke]
+  - id: ray-cluster-auth-manual
+    source: ray-operator/config/samples/ray-cluster.auth-manual.yaml
+  - id: ray-cluster-auth-secret-ref
+    source: ray-operator/config/samples/ray-cluster.auth.secret-ref.yaml
+  - id: ray-cluster-auth
+    source: ray-operator/config/samples/ray-cluster.auth.yaml
+  - id: ray-cluster-autoscaler-v2-overwrite-cmd
+    source: ray-operator/config/samples/ray-cluster.autoscaler-v2-overwrite-cmd.yaml
+  - id: ray-cluster-autoscaler-v2
+    source: ray-operator/config/samples/ray-cluster.autoscaler-v2.yaml
+  - id: ray-cluster-autoscaler
+    source: ray-operator/config/samples/ray-cluster.autoscaler.yaml
+  - id: ray-cluster-complete
+    source: ray-operator/config/samples/ray-cluster.complete.yaml
+  - id: ray-cluster-custom-head-service
+    source: ray-operator/config/samples/ray-cluster.custom-head-service.yaml
+  - id: ray-cluster-deprecate-gcs-ft
+    source: ray-operator/config/samples/ray-cluster.deprecate-gcs-ft.yaml
+  - id: ray-cluster-embed-grafana
+    source: ray-operator/config/samples/ray-cluster.embed-grafana.yaml
+  - id: ray-cluster-embedded-gcs-ft
+    source: ray-operator/config/samples/ray-cluster.embedded-gcs-ft.yaml
+  - id: ray-cluster-external-redis-uri
+    source: ray-operator/config/samples/ray-cluster.external-redis-uri.yaml
+  - id: ray-cluster-external-redis
+    source: ray-operator/config/samples/ray-cluster.external-redis.yaml
+  - id: ray-cluster-fluentbit
+    source: ray-operator/config/samples/ray-cluster.fluentbit.yaml
+  - id: ray-cluster-gke-bucket
+    source: ray-operator/config/samples/ray-cluster.gke-bucket.yaml
+    requires: [gke]
+  - id: ray-cluster-head-command
+    source: ray-operator/config/samples/ray-cluster.head-command.yaml
+  - id: ray-cluster-historyserver
+    source: ray-operator/config/samples/ray-cluster.historyserver.yaml
+  - id: ray-cluster-kai-gpu-sharing
+    source: ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml
+    requires: [gpu]
+  - id: ray-cluster-kai-scheduler
+    source: ray-operator/config/samples/ray-cluster.kai-scheduler.yaml
+  - id: ray-cluster-kubernetes-auth-manual
+    source: ray-operator/config/samples/ray-cluster.kubernetes.auth-manual.yaml
+  - id: ray-cluster-kubernetes-auth
+    source: ray-operator/config/samples/ray-cluster.kubernetes.auth.yaml
+  - id: ray-cluster-mtls
+    source: ray-operator/config/samples/ray-cluster.mtls.yaml
+  - id: ray-cluster-network-policy-deny-all
+    source: ray-operator/config/samples/ray-cluster.network-policy-deny-all.yaml
+  - id: ray-cluster-overwrite-command
+    source: ray-operator/config/samples/ray-cluster.overwrite-command.yaml
+  - id: ray-cluster-persistent-redis-sidecar
+    source: ray-operator/config/samples/ray-cluster.persistent-redis-sidecar.yaml
+  - id: ray-cluster-persistent-redis
+    source: ray-operator/config/samples/ray-cluster.persistent-redis.yaml
+  - id: ray-cluster-platform-events
+    source: ray-operator/config/samples/ray-cluster.platform-events.yaml
+  - id: ray-cluster-py-spy
+    source: ray-operator/config/samples/ray-cluster.py-spy.yaml
+  - id: ray-cluster-sample
+    source: ray-operator/config/samples/ray-cluster.sample.yaml
+  - id: ray-cluster-sandbox
+    source: ray-operator/config/samples/ray-cluster.sandbox.yaml
+    requires: [gvisor]
+  - id: ray-cluster-scheduler-plugins
+    source: ray-operator/config/samples/ray-cluster.scheduler-plugins.yaml
+  - id: ray-cluster-separate-ingress
+    source: ray-operator/config/samples/ray-cluster.separate-ingress.yaml
+  - id: ray-cluster-tls
+    source: ray-operator/config/samples/ray-cluster.tls.yaml
+  - id: ray-cluster-tpu-v4-multihost
+    source: ray-operator/config/samples/ray-cluster.tpu-v4-multihost.yaml
+    requires: [tpu, gke]
+  - id: ray-cluster-tpu-v4-singlehost
+    source: ray-operator/config/samples/ray-cluster.tpu-v4-singlehost.yaml
+    requires: [tpu, gke]
+  - id: ray-cluster-tpu-v6e-16-multihost
+    source: ray-operator/config/samples/ray-cluster.tpu-v6e-16-multihost.yaml
+    requires: [tpu, gke]
+  - id: ray-cluster-tpu-v6e-256-multihost
+    source: ray-operator/config/samples/ray-cluster.tpu-v6e-256-multihost.yaml
+    requires: [tpu, gke]
+  - id: ray-cluster-tpu-v6e-singlehost
+    source: ray-operator/config/samples/ray-cluster.tpu-v6e-singlehost.yaml
+    requires: [tpu, gke]
+  - id: ray-cluster-uv
+    source: ray-operator/config/samples/ray-cluster.uv.yaml
+  - id: ray-cluster-verl
+    source: ray-operator/config/samples/ray-cluster.verl.yaml
+    requires: [gpu]
+  - id: ray-cluster-volcano-scheduler-queue
+    source: ray-operator/config/samples/ray-cluster.volcano-scheduler-queue.yaml
+  - id: ray-cluster-volcano-scheduler
+    source: ray-operator/config/samples/ray-cluster.volcano-scheduler.yaml
+  - id: ray-cluster-yunikorn-scheduler
+    source: ray-operator/config/samples/ray-cluster.yunikorn-scheduler.yaml
+
+  # Samples: RayJob
+  - id: ray-job-pytorch-mnist
+    source: ray-operator/config/samples/pytorch-mnist/ray-job.pytorch-mnist.yaml
+  - id: ray-job-pytorch-image-classifier
+    source: ray-operator/config/samples/pytorch-resnet-image-classifier/ray-job.pytorch-image-classifier.yaml
+    requires: [gpu, gke]
+  - id: ray-job-pytorch-distributed-training
+    source: ray-operator/config/samples/pytorch-text-classifier/ray-job.pytorch-distributed-training.yaml
+    requires: [gpu]
+  - id: ray-job-image-resize
+    source: ray-operator/config/samples/ray-data-image-resize/ray-job.image-resize.yaml
+    requires: [gke]
+  - id: ray-job-batch-inference
+    source: ray-operator/config/samples/ray-job.batch-inference.yaml
+    requires: [gpu, gke]
+  - id: ray-job-custom-head-svc
+    source: ray-operator/config/samples/ray-job.custom-head-svc.yaml
+  - id: ray-job-deletion-rules
+    source: ray-operator/config/samples/ray-job.deletion-rules.yaml
+  - id: ray-job-interactive-mode
+    source: ray-operator/config/samples/ray-job.interactive-mode.yaml
+  - id: ray-job-kueue-toy-sample
+    source: ray-operator/config/samples/ray-job.kueue-toy-sample.yaml
+  - id: ray-job-light-weight-submitter
+    source: ray-operator/config/samples/ray-job.light-weight-submitter.yaml
+  - id: ray-job-platform-events
+    source: ray-operator/config/samples/ray-job.platform-events.yaml
+  - id: ray-job-resources
+    source: ray-operator/config/samples/ray-job.resources.yaml
+  - id: ray-job-sample
+    source: ray-operator/config/samples/ray-job.sample.yaml
+  - id: ray-job-sandbox
+    source: ray-operator/config/samples/ray-job.sandbox.yaml
+    requires: [gvisor]
+  - id: ray-job-shutdown
+    source: ray-operator/config/samples/ray-job.shutdown.yaml
+  - id: ray-job-sidecar-mode
+    source: ray-operator/config/samples/ray-job.sidecar-mode.yaml
+  - id: ray-job-tpu-jax
+    source: ray-operator/config/samples/ray-job.tpu-jax.yaml
+    requires: [tpu, gke]
+  - id: ray-job-tpu-v6e-16-multihost
+    source: ray-operator/config/samples/ray-job.tpu-v6e-16-multihost.yaml
+    requires: [tpu, gke]
+  - id: ray-job-tpu-v6e-256-multihost
+    source: ray-operator/config/samples/ray-job.tpu-v6e-256-multihost.yaml
+    requires: [tpu, gke]
+  - id: ray-job-tpu-v6e-singlehost
+    source: ray-operator/config/samples/ray-job.tpu-v6e-singlehost.yaml
+    requires: [tpu, gke]
+  - id: ray-job-use-existing-raycluster
+    source: ray-operator/config/samples/ray-job.use-existing-raycluster.yaml
+  - id: ray-job-volcano-scheduler-queue
+    source: ray-operator/config/samples/ray-job.volcano-scheduler-queue.yaml
+  - id: ray-job-yunikorn-scheduler
+    source: ray-operator/config/samples/ray-job.yunikorn-scheduler.yaml
+
+  # Samples: RayService
+  - id: ray-service-custom-serve-service
+    source: ray-operator/config/samples/ray-service.custom-serve-service.yaml
+  - id: ray-service-deepseek
+    source: ray-operator/config/samples/ray-service.deepseek.yaml
+    requires: [gpu]
+  - id: ray-service-different-port
+    source: ray-operator/config/samples/ray-service.different-port.yaml
+  - id: ray-service-high-availability
+    source: ray-operator/config/samples/ray-service.high-availability.yaml
+  - id: ray-service-high-throughput-gemma4
+    source: ray-operator/config/samples/ray-service.high-throughput-gemma4.yaml
+    requires: [gpu, gke]
+  - id: ray-service-high-throughput-llm
+    source: ray-operator/config/samples/ray-service.high-throughput-llm.yaml
+    requires: [gpu, gke]
+  - id: ray-service-incremental-upgrade-gateway-ref
+    source: ray-operator/config/samples/ray-service.incremental-upgrade-gateway-ref.yaml
+  - id: ray-service-incremental-upgrade
+    source: ray-operator/config/samples/ray-service.incremental-upgrade.yaml
+  - id: ray-service-llm-serve
+    source: ray-operator/config/samples/ray-service.llm-serve.yaml
+    requires: [gpu]
+  - id: ray-service-mobilenet
+    source: ray-operator/config/samples/ray-service.mobilenet.yaml
+  - id: ray-service-no-ray-serve-replica
+    source: ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml
+  - id: ray-service-sample
+    source: ray-operator/config/samples/ray-service.sample.yaml
+  - id: ray-service-stable-diffusion
+    source: ray-operator/config/samples/ray-service.stable-diffusion.yaml
+    requires: [gpu]
+  - id: ray-service-text-ml
+    source: ray-operator/config/samples/ray-service.text-ml.yaml
+  - id: ray-service-text-summarizer
+    source: ray-operator/config/samples/ray-service.text-summarizer.yaml
+    requires: [gpu]
+  - id: ray-service-tpu-single-host
+    source: ray-operator/config/samples/ray-service.tpu-single-host.yaml
+    requires: [tpu, gke]
+  - id: ray-service-vllm-tpu-v6e-singlehost
+    source: ray-operator/config/samples/vllm/ray-service.vllm-tpu-v6e-singlehost.yaml
+    requires: [tpu, gke]
+
+  # Samples: RayCronJob
+  - id: ray-cronjob-timezone-sample
+    source: ray-operator/config/samples/ray-cronjob-timezone.sample.yaml
+  - id: ray-cronjob-sample
+    source: ray-operator/config/samples/ray-cronjob.sample.yaml
+
+  # Samples: other
+  - id: agent-sandbox
+    source: ray-operator/config/samples/agent-sandbox/sandbox.yaml
+    requires: [gvisor]
+  - id: gateway-api-istio-class
+    source: ray-operator/config/samples/gateway-api/istio-class.yaml
+  - id: ingress-rayclient-tls
+    source: ray-operator/config/samples/ingress-rayclient-tls.yaml
+  - id: ray-data-image-resize-gcsfusecsi-job
+    source: ray-operator/config/samples/ray-data-image-resize/ray-data-image-resize-gcsfusecsi-job.yaml
+    requires: [gke]
+
+  # Helm charts
+  - id: chart-kuberay-operator
+    procedure: |
+      helm install the kuberay-operator chart at $CHART_VERSION from the kuberay Helm repo.
+      The operator Deployment becomes Available running quay.io/kuberay/operator:$KUBERAY_VERSION
+      and the ray.io CRDs exist. helm upgrade from the previous release's chart succeeds and the
+      new operator reconciles an existing RayCluster. helm uninstall removes the Deployment.
+  - id: chart-ray-cluster
+    procedure: |
+      With the operator installed, helm install the ray-cluster chart at $CHART_VERSION with
+      default values. The RayCluster becomes ready with one head and one worker Pod Running.
+      helm uninstall removes the RayCluster.
+  - id: chart-kuberay-apiserver
+    procedure: |
+      helm install the kuberay-apiserver chart at $CHART_VERSION. The apiserver Deployment
+      becomes Available, and GET /apis/ray.io/v1/namespaces/default/rayclusters through its
+      Service returns 200 with a JSON list.
+
+  # Go modules
+  - id: go-get-ray-operator
+    procedure: |
+      In an empty Go module, go get github.com/ray-project/kuberay/ray-operator@$KUBERAY_VERSION
+      succeeds, and a main package that imports
+      github.com/ray-project/kuberay/ray-operator/apis/ray/v1 and builds a RayCluster value compiles.
+  - id: go-get-apiserversdk
+    procedure: |
+      In an empty Go module, go get github.com/ray-project/kuberay@$KUBERAY_VERSION succeeds, and a
+      main package that imports github.com/ray-project/kuberay/apiserversdk compiles.
+
+  # Features without a page or a sample of their own
+  - id: multi-host-indexing-labels
+    procedure: |
+      Apply a RayCluster whose worker group has numOfHosts: 2 and replicas: 2. Each of the four
+      worker Pods carries ray.io/worker-group-replica-name (two distinct values, two Pods each),
+      ray.io/worker-group-replica-index (0 or 1) and ray.io/replica-host-index (0 or 1, unique
+      within a replica).
