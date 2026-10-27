@@ -3,6 +3,27 @@
  * the Ray dashboard's theme (python/ray/dashboard/client/src/theme.ts at
  * ray-project/ray@c7e5160f11) as MUI renders it; the sizes are MUI's.
  */
+
+/*
+ * Roboto, which the Ray dashboard bundles: @fontsource/roboto 5.3.0, latin subset.
+ * Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic),
+ * licensed under the SIL Open Font License 1.1 (https://openfontlicense.org).
+ */
+@font-face {
+    font-family: "Roboto";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 400;
+    src: url("/select_cluster/fonts/roboto-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Roboto";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 500;
+    src: url("/select_cluster/fonts/roboto-latin-500-normal.woff2") format("woff2");
+}
 :root {
     color-scheme: light;
     --background: #eceff1;

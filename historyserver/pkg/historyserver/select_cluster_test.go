@@ -26,6 +26,8 @@ func TestSelectClusterFiles(t *testing.T) {
 		"page":       {path: "/select_cluster", contentType: "text/html; charset=utf-8", body: html.ClusterSelectorHTML},
 		"stylesheet": {path: "/select_cluster/select_cluster.css", contentType: "text/css; charset=utf-8", body: html.ClusterSelectorCSS},
 		"script":     {path: "/select_cluster/select_cluster.js", contentType: "text/javascript; charset=utf-8", body: html.ClusterSelectorJS},
+		"font 400":   {path: "/select_cluster/fonts/roboto-latin-400-normal.woff2", contentType: "font/woff2", body: html.ClusterSelectorRoboto400},
+		"font 500":   {path: "/select_cluster/fonts/roboto-latin-500-normal.woff2", contentType: "font/woff2", body: html.ClusterSelectorRoboto500},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -52,11 +54,21 @@ func TestSelectClusterFiles(t *testing.T) {
 	}
 }
 
-// Every /select_cluster/ URL in the page must be one that routerSelectCluster serves.
+// The page and its stylesheet must load exactly the files that routerSelectCluster serves.
 func TestSelectClusterPageReferences(t *testing.T) {
-	refs := regexp.MustCompile(`(?:href|src)="(/select_cluster/[^"]*)"`).FindAllSubmatch(html.ClusterSelectorHTML, -1)
-	require.NotEmpty(t, refs)
-	for _, ref := range refs {
-		assert.Contains(t, selectClusterFiles, string(ref[1]))
+	refPattern := regexp.MustCompile(`(?:href="|src="|url\(")(/select_cluster/[^"]*)"`)
+	loaded := map[string]bool{}
+	for _, file := range [][]byte{html.ClusterSelectorHTML, html.ClusterSelectorCSS} {
+		for _, ref := range refPattern.FindAllSubmatch(file, -1) {
+			loaded[string(ref[1])] = true
+		}
 	}
+
+	served := map[string]bool{}
+	for path := range selectClusterFiles {
+		if path != "/select_cluster" {
+			served[path] = true
+		}
+	}
+	assert.Equal(t, served, loaded)
 }

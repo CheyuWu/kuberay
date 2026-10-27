@@ -280,9 +280,11 @@ func routerHealthz(_ *ServerHandler) {
 
 // selectClusterFiles are the cluster selection page and the files it loads, by path.
 var selectClusterFiles = map[string]selectClusterFile{
-	"/select_cluster":                    newSelectClusterFile("text/html; charset=utf-8", html.ClusterSelectorHTML),
-	"/select_cluster/select_cluster.css": newSelectClusterFile("text/css; charset=utf-8", html.ClusterSelectorCSS),
-	"/select_cluster/select_cluster.js":  newSelectClusterFile("text/javascript; charset=utf-8", html.ClusterSelectorJS),
+	"/select_cluster":                                     newSelectClusterFile("text/html; charset=utf-8", html.ClusterSelectorHTML),
+	"/select_cluster/select_cluster.css":                  newSelectClusterFile("text/css; charset=utf-8", html.ClusterSelectorCSS),
+	"/select_cluster/select_cluster.js":                   newSelectClusterFile("text/javascript; charset=utf-8", html.ClusterSelectorJS),
+	"/select_cluster/fonts/roboto-latin-400-normal.woff2": newSelectClusterFile("font/woff2", html.ClusterSelectorRoboto400),
+	"/select_cluster/fonts/roboto-latin-500-normal.woff2": newSelectClusterFile("font/woff2", html.ClusterSelectorRoboto500),
 }
 
 type selectClusterFile struct {
