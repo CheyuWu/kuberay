@@ -1,260 +1,498 @@
-(function() {
-    let clusters = [];
-    let entering = null;
+// The cluster selection page: lists the sessions from GET /clusters, enters one
+// through /enter_cluster, and then opens the Ray dashboard on the same origin.
+"use strict";
 
-    const errorContainer = document.getElementById('error-container');
-    const searchInput = document.getElementById('search-input');
-    const loadingContainer = document.getElementById('loading-container');
-    const tableContainer = document.getElementById('table-container');
-    const tbody = document.getElementById('clusters-tbody');
-    const showingText = document.getElementById('showing-text');
+// ---- Theme ----
 
-    function showError(message) {
-        if (message) {
-            errorContainer.textContent = message;
-            errorContainer.classList.remove('hidden');
+// Same rules and localStorage key as the Ray dashboard (src/App.tsx), so the
+// choice carries over on their shared origin: ?theme=, then the stored choice,
+// then the system theme.
+const THEME_KEY = "themeMode";
+// Kept in a variable: a MediaQueryList that nothing references can be
+// garbage-collected along with its change listener.
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+const isThemeMode = (value) => value === "light" || value === "dark";
+const urlTheme = new URLSearchParams(window.location.search).get("theme");
+// ?theme= fixes the mode, so the page has no toggle then.
+const themeFixed = isThemeMode(urlTheme);
+
+const storedTheme = localStorage.getItem(THEME_KEY);
+let theme = themeFixed ? urlTheme : isThemeMode(storedTheme) ? storedTheme : darkQuery.matches ? "dark" : "light";
+
+const applyTheme = () => {
+    document.documentElement.dataset.theme = theme;
+};
+
+// Runs before the body is parsed, so the page is never drawn in the wrong theme.
+applyTheme();
+
+// ---- Sessions ----
+
+// sessionName of a running cluster; any other value is a stored session.
+const LIVE_SESSION = "live";
+
+// The Ray dashboard served on the same origin by `ray start --proxy-server-url`.
+const DASHBOARD_URL = "/#/overview";
+
+// Same page size as the Ray dashboard's tables.
+const PAGE_SIZE = 10;
+
+const isLive = (c) => c.sessionName === LIVE_SESSION;
+
+const sessionId = (c) => `${c.namespace}/${c.name}/${c.sessionName}`;
+
+// A link that enters the session on load, so it also works in a new tab.
+const sessionHref = (c) => `?${new URLSearchParams({ namespace: c.namespace, name: c.name, session: c.sessionName })}`;
+
+// The session that a sessionHref link names, read from location.search.
+const linkedSession = (search) => {
+    const params = new URLSearchParams(search);
+    const session = { namespace: params.get("namespace"), name: params.get("name"), sessionName: params.get("session") };
+    // Each value is a path segment of /enter_cluster, which "." and ".." would leave.
+    return Object.values(session).every((value) => value && value !== "." && value !== "..") ? session : undefined;
+};
+
+// The History Server reports owner kinds in lower case.
+const OWNER_KINDS = { raycluster: "RayCluster", rayjob: "RayJob", rayservice: "RayService" };
+
+const ownerKindLabel = (kind) => OWNER_KINDS[kind.toLowerCase()] ?? kind;
+
+const hasStatus = (c, status) => status === "all" || (status === "live") === isLive(c);
+
+const matches = (c, query) => {
+    const lowerQuery = query.toLowerCase();
+    return [c.name, c.namespace, c.sessionName, c.ownerName].some((field) => (field ?? "").toLowerCase().includes(lowerQuery));
+};
+
+const SORT_VALUES = {
+    name: (c) => c.name,
+    namespace: (c) => c.namespace,
+    // Ascending puts live sessions first.
+    status: (c) => (isLive(c) ? 0 : 1),
+    owner: (c) => c.ownerName ?? "",
+    createdAt: (c) => c.createTimeStamp,
+};
+
+const compareBy = (sort) => {
+    const sortValue = SORT_VALUES[sort.key];
+    const sign = sort.order === "asc" ? 1 : -1;
+    return (a, b) => {
+        const x = sortValue(a);
+        const y = sortValue(b);
+        const order = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
+        return sign * order;
+    };
+};
+
+const range = (start, end) => Array.from({ length: end - start + 1 }, (_, i) => start + i);
+
+// The buttons of MUI's Pagination with one boundary and one sibling page:
+// "previous", page numbers, "start-ellipsis", "end-ellipsis" and "next".
+const paginationItems = (page, count) => {
+    const siblingsStart = Math.max(Math.min(page - 1, count - 4), 3);
+    const siblingsEnd = Math.min(Math.max(page + 1, 5), count - 2);
+    return [
+        "previous",
+        1,
+        ...(siblingsStart > 3 ? ["start-ellipsis"] : count > 3 ? [2] : []),
+        ...range(siblingsStart, siblingsEnd),
+        ...(siblingsEnd < count - 2 ? ["end-ellipsis"] : count > 2 ? [count - 1] : []),
+        ...(count > 1 ? [count] : []),
+        "next",
+    ];
+};
+
+// ---- History Server API ----
+
+const statusError = (res) => new Error(`${res.status}: ${res.statusText || "Error"}`);
+
+const fetchClusters = async () => {
+    const res = await fetch("/clusters");
+    if (!res.ok) {
+        throw statusError(res);
+    }
+    return (await res.json()) ?? [];
+};
+
+// Sets cookies that route the Ray dashboard's requests to the session. A 2xx
+// means done; the body (JSON or HTML, by History Server version) is ignored.
+const enterCluster = async ({ namespace, name, sessionName }) => {
+    // A link can name the session, so encode each value to keep it in its path segment.
+    const path = [namespace, "raycluster", name, sessionName].map(encodeURIComponent).join("/");
+    const res = await fetch(`/enter_cluster/${path}`);
+    if (!res.ok) {
+        const body = (await res.text()).trim();
+        throw body ? new Error(body) : statusError(res);
+    }
+};
+
+// ---- Page ----
+
+// How long an enter error shows; it pauses on hover or in the background.
+const ENTER_ERROR_MS = 6000;
+
+const STATUS_NAMES = { all: "", live: "live ", ended: "ended " };
+
+const state = {
+    // "loading", "loaded" with clusters, or "failed" with message.
+    sessions: { status: "loading" },
+    query: "",
+    statusFilter: "all",
+    // Newest first, the order the History Server returns.
+    sort: { key: "createdAt", order: "desc" },
+    page: 1,
+    // sessionId being opened; one at a time.
+    entering: null,
+};
+
+const byId = (id) => document.getElementById(id);
+
+const element = (tag, className, text) => {
+    const el = document.createElement(tag);
+    if (className) {
+        el.className = className;
+    }
+    if (text !== undefined) {
+        el.textContent = text;
+    }
+    return el;
+};
+
+// The filtered, sorted page of clusters that the table shows.
+const sessionList = () => {
+    const clusters = state.sessions.status === "loaded" ? state.sessions.clusters : [];
+    const matching = clusters.filter((c) => hasStatus(c, state.statusFilter) && matches(c, state.query)).sort(compareBy(state.sort));
+    const pageCount = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
+    // A refresh can leave fewer pages than the one shown.
+    const page = Math.min(state.page, pageCount);
+    const first = (page - 1) * PAGE_SIZE;
+    return { total: clusters.length, matchingCount: matching.length, page, pageCount, first, rows: matching.slice(first, first + PAGE_SIZE) };
+};
+
+const renderThemeToggle = () => {
+    const toggle = byId("theme-toggle");
+    const label = theme === "light" ? "Dark mode" : "Light mode";
+    toggle.hidden = themeFixed;
+    toggle.dataset.tooltip = label;
+    toggle.setAttribute("aria-label", label);
+};
+
+const sessionRow = (cluster) => {
+    const row = byId("session-row").content.firstElementChild.cloneNode(true);
+    const [nameCell, namespaceCell, statusCell, ownerCell, createdCell] = row.cells;
+    const busy = state.entering !== null;
+
+    const link = nameCell.querySelector(".link");
+    link.textContent = cluster.name;
+    if (busy) {
+        // No href while busy, so no new tabs either; role keeps it a link.
+        link.setAttribute("role", "link");
+        link.setAttribute("aria-disabled", "true");
+    } else {
+        link.href = sessionHref(cluster);
+    }
+    link.addEventListener("click", (event) => {
+        // Leave middle and modified clicks (new tab or window) to the browser.
+        if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+            return;
+        }
+        event.preventDefault();
+        enter(cluster);
+    });
+    if (state.entering === sessionId(cluster)) {
+        const spinner = nameCell.querySelector(".spinner");
+        spinner.removeAttribute("hidden");
+        spinner.setAttribute("aria-label", `Opening ${cluster.name}`);
+    }
+
+    namespaceCell.textContent = cluster.namespace || "-";
+
+    if (isLive(cluster)) {
+        statusCell.append(element("span", "chip success", "Live"));
+    } else {
+        const sessionName = element("span", "session-id");
+        sessionName.tabIndex = 0;
+        sessionName.dataset.tooltip = cluster.sessionName;
+        sessionName.setAttribute("aria-description", cluster.sessionName);
+        sessionName.append(element("span", "chip inactive", "Ended"));
+        statusCell.append(sessionName);
+    }
+
+    if (cluster.ownerKind || cluster.ownerName) {
+        const owner = element("span", "owner", cluster.ownerName || "-");
+        if (cluster.ownerKind) {
+            owner.append(element("span", "chip", ownerKindLabel(cluster.ownerKind)));
+        }
+        ownerCell.append(owner);
+    } else {
+        ownerCell.textContent = "-";
+    }
+
+    createdCell.textContent = cluster.createTime || "-";
+    return row;
+};
+
+// What an empty session table says, depending on why it is empty.
+const emptyRow = (hasSessions) => {
+    const row = byId("empty-row").content.firstElementChild.cloneNode(true);
+    const status = STATUS_NAMES[state.statusFilter];
+    if (!hasSessions) {
+        row.querySelector(".empty-title").textContent = "No cluster sessions yet";
+        row.querySelector(".empty-detail").textContent = "Sessions appear here after a Ray cluster runs with the History Server collector.";
+    } else {
+        row.querySelector(".empty-title").textContent = "No matching sessions";
+        row.querySelector(".empty-detail").textContent = state.query ? `No ${status}cluster or session matches "${state.query}".` : `There are no ${status}sessions.`;
+    }
+    return row;
+};
+
+const pageButton = (item, page, pageCount) => {
+    if (item === "start-ellipsis" || item === "end-ellipsis") {
+        return element("span", "page-item page-ellipsis", "…");
+    }
+    const button = element("button", "page-item");
+    button.type = "button";
+    if (item === "previous" || item === "next") {
+        const [previousArrow, nextArrow] = byId("page-arrows").content.children;
+        button.append((item === "previous" ? previousArrow : nextArrow).cloneNode(true));
+        button.setAttribute("aria-label", `Go to ${item} page`);
+        button.disabled = item === "previous" ? page === 1 : page === pageCount;
+        button.addEventListener("click", () => goToPage(page + (item === "previous" ? -1 : 1), button.getAttribute("aria-label")));
+    } else {
+        button.textContent = item;
+        if (item === page) {
+            button.setAttribute("aria-current", "page");
+            button.setAttribute("aria-label", `page ${item}`);
         } else {
-            errorContainer.classList.add('hidden');
+            button.setAttribute("aria-label", `Go to page ${item}`);
+        }
+        button.addEventListener("click", () => goToPage(item, `page ${item}`));
+    }
+    return button;
+};
+
+const render = () => {
+    const { sessions } = state;
+    byId("refresh").disabled = sessions.status === "loading";
+    byId("entering").hidden = state.entering === null;
+    byId("clear-search").hidden = !state.query;
+    // An <svg> has no hidden property, only the attribute.
+    byId("search-icon").toggleAttribute("hidden", Boolean(state.query));
+    for (const toggle of document.querySelectorAll(".toggle")) {
+        toggle.setAttribute("aria-pressed", String(toggle.dataset.status === state.statusFilter));
+    }
+    for (const label of document.querySelectorAll(".sort-label")) {
+        const th = label.parentElement;
+        if (label.dataset.sort === state.sort.key) {
+            th.setAttribute("aria-sort", state.sort.order === "asc" ? "ascending" : "descending");
+        } else {
+            th.removeAttribute("aria-sort");
         }
     }
 
-    function fetchClusters() {
-        showError(null);
-        loadingContainer.classList.remove('hidden');
-        tableContainer.classList.add('hidden');
-
-        fetch('/clusters')
-            .then(res => {
-                if (!res.ok) {
-                    throw new Error(`${res.status}: ${res.statusText || 'Error'}`);
-                }
-                return res.json();
-            })
-            .then(data => {
-                clusters = data || [];
-                renderTable();
-                loadingContainer.classList.add('hidden');
-                tableContainer.classList.remove('hidden');
-            })
-            .catch(err => {
-                showError(err.message || "500: Internal Server Error");
-                loadingContainer.classList.add('hidden');
-            });
+    byId("loading").hidden = sessions.status !== "loading";
+    byId("load-error").hidden = sessions.status !== "failed";
+    byId("load-error").querySelector(".alert-message").textContent = sessions.message ?? "";
+    byId("sessions").hidden = sessions.status !== "loaded";
+    if (sessions.status === "loaded") {
+        const list = sessionList();
+        // Stay on the page shown, so a later refresh with more pages doesn't jump back.
+        state.page = list.page;
+        byId("session-rows").replaceChildren(...(list.rows.length ? list.rows.map(sessionRow) : [emptyRow(list.total > 0)]));
+        const shown = list.rows.length === 0 ? 0 : `${list.first + 1}–${list.first + list.rows.length}`;
+        const total = list.matchingCount < list.total ? ` (${list.total} in total)` : "";
+        byId("showing").textContent = `Showing ${shown} of ${list.matchingCount} sessions${total}`;
+        byId("pagination").replaceChildren(...(list.pageCount > 1 ? paginationItems(list.page, list.pageCount).map((item) => pageButton(item, list.page, list.pageCount)) : []));
     }
+    updateTooltip();
+};
 
-    function enterCluster(namespace, name, session) {
-        if (entering) return; // In-flight lock
-        entering = `${namespace}/${name}/${session}`;
-        showError(null);
-        renderTable();
+// Any change to the listing goes back to page 1.
+const changeListing = (change) => {
+    Object.assign(state, change, { page: 1 });
+    render();
+};
 
-        fetch(`/enter_cluster/${namespace}/raycluster/${name}/${session}`)
-            .then(res => {
-                if (!res.ok) {
-                    return res.text().then(body => {
-                        throw new Error(body.trim() || `${res.status}: ${res.statusText || 'Error'}`);
-                    });
-                }
-                return res.json();
-            })
-            .then(data => {
-                if (data.result === 'success') {
-                    window.location.href = '/#/overview';
-                } else {
-                    showError(data.message || "500: Error entering cluster session");
-                    entering = null;
-                    renderTable();
-                }
-            })
-            .catch(err => {
-                showError(err.message || "500: Communication Error");
-                entering = null;
-                renderTable();
-            });
+// Rendering rebuilds the page buttons, so the focus goes back to the button
+// with focusLabel, or to the current page once that button is disabled.
+const goToPage = (page, focusLabel) => {
+    state.page = page;
+    render();
+    const pagination = byId("pagination");
+    (pagination.querySelector(`[aria-label="${focusLabel}"]:enabled`) ?? pagination.querySelector("[aria-current=page]")).focus();
+};
+
+const load = async () => {
+    try {
+        state.sessions = { status: "loaded", clusters: await fetchClusters() };
+    } catch (err) {
+        state.sessions = { status: "failed", message: err.message };
     }
+    render();
+};
 
-    function renderTable() {
-        const query = searchInput.value.toLowerCase();
-        const filtered = clusters.filter(c => {
-            return (c.name || '').toLowerCase().includes(query) ||
-                   (c.namespace || '').toLowerCase().includes(query) ||
-                   (c.sessionName || '').toLowerCase().includes(query) ||
-                   (c.ownerName || '').toLowerCase().includes(query);
-        });
+const refresh = () => {
+    state.sessions = { status: "loading" };
+    render();
+    load();
+};
 
-        tbody.replaceChildren();
+// ---- Entering a session ----
 
-        if (filtered.length === 0) {
-            const tr = document.createElement('tr');
-            const td = document.createElement('td');
-            td.setAttribute('colspan', '6');
-            td.className = 'empty-state';
+let enterErrorTimer;
 
-            const wrapper = document.createElement('div');
-            wrapper.className = 'empty-state-wrapper';
+const startEnterErrorTimer = (ms) => {
+    clearTimeout(enterErrorTimer);
+    enterErrorTimer = setTimeout(hideEnterError, ms);
+};
 
-            const svgString = '<svg class="empty-state-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" /></svg>';
-            const parser = new DOMParser();
-            const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
-            wrapper.appendChild(svgDoc.documentElement);
+const showEnterError = (message) => {
+    byId("enter-error").querySelector(".alert-message").textContent = message;
+    byId("enter-error").hidden = false;
+    startEnterErrorTimer(ENTER_ERROR_MS);
+};
 
-            const titleSpan = document.createElement('span');
-            titleSpan.className = 'empty-state-title';
-            titleSpan.textContent = 'No cluster sessions found';
-            wrapper.appendChild(titleSpan);
+const hideEnterError = () => {
+    clearTimeout(enterErrorTimer);
+    byId("enter-error").hidden = true;
+};
 
-            const subtitleSpan = document.createElement('span');
-            subtitleSpan.className = 'empty-state-subtitle';
-            subtitleSpan.textContent = `We couldn't find any session matching your query "${searchInput.value}".`;
-            wrapper.appendChild(subtitleSpan);
-
-            td.appendChild(wrapper);
-            tr.appendChild(td);
-            tbody.appendChild(tr);
-        } else {
-            filtered.forEach(c => {
-                const isLive = c.sessionName === 'live';
-                const clusterId = `${c.namespace}/${c.name}/${c.sessionName}`;
-                const isThisEntering = entering === clusterId;
-                const isAnyEntering = Boolean(entering);
-
-                const tr = document.createElement('tr');
-                tr.className = isAnyEntering ? 'opacity-70' : 'hover-row';
-
-                // Cluster Name
-                const tdName = document.createElement('td');
-                tdName.className = 'px-6 font-medium text-white break-words';
-                const nameWrapper = document.createElement('div');
-                nameWrapper.className = 'items-start gap-2.5';
-                const dot = document.createElement('div');
-                dot.className = `status-dot ${isLive ? 'dot-emerald animate-pulse' : 'dot-blue'}`;
-                nameWrapper.appendChild(dot);
-                const nameSpan = document.createElement('span');
-                nameSpan.className = `cluster-name-link ${isAnyEntering ? 'disabled-link' : 'clickable-link'}`;
-                nameSpan.textContent = c.name;
-                if (!isAnyEntering) {
-                    nameSpan.onclick = () => enterCluster(c.namespace, c.name, c.sessionName);
-                }
-                nameWrapper.appendChild(nameSpan);
-                tdName.appendChild(nameWrapper);
-                tr.appendChild(tdName);
-
-                // Namespace
-                const tdNamespace = document.createElement('td');
-                tdNamespace.className = 'px-6 font-mono text-xs break-words';
-                const nsSpan = document.createElement('span');
-                nsSpan.className = 'namespace-badge';
-                nsSpan.textContent = c.namespace;
-                tdNamespace.appendChild(nsSpan);
-                tr.appendChild(tdNamespace);
-
-                // Session Status
-                const tdStatus = document.createElement('td');
-                tdStatus.className = 'px-6 font-mono text-xs break-words';
-                const statusBadge = document.createElement('span');
-                statusBadge.className = isLive ? 'badge-emerald font-mono' : 'badge-amber font-mono';
-
-                const smallDot = document.createElement('span');
-                smallDot.className = isLive ? 'small-dot bg-emerald' : 'small-dot bg-amber';
-                statusBadge.appendChild(smallDot);
-
-                const textSpan = document.createElement('span');
-                textSpan.textContent = isLive ? 'Live' : (c.sessionName || 'Replay');
-                statusBadge.appendChild(textSpan);
-
-                tdStatus.appendChild(statusBadge);
-                tr.appendChild(tdStatus);
-
-                // Owner
-                const tdOwner = document.createElement('td');
-                tdOwner.className = 'px-6 text-xs text-slate-300 break-words';
-                if (c.ownerKind || c.ownerName) {
-                    const ownerWrapper = document.createElement('div');
-                    ownerWrapper.className = 'items-start gap-1.5 break-words';
-                    if (c.ownerKind) {
-                        const kindBadge = document.createElement('span');
-                        kindBadge.className = 'badge-indigo';
-                        kindBadge.textContent = c.ownerKind;
-                        ownerWrapper.appendChild(kindBadge);
-                    }
-                    const ownerNameSpan = document.createElement('span');
-                    ownerNameSpan.className = 'owner-name';
-                    ownerNameSpan.textContent = c.ownerName || '—';
-                    ownerWrapper.appendChild(ownerNameSpan);
-                    tdOwner.appendChild(ownerWrapper);
-                } else {
-                    const dashSpan = document.createElement('span');
-                    dashSpan.className = 'text-slate-500';
-                    dashSpan.textContent = '—';
-                    tdOwner.appendChild(dashSpan);
-                }
-                tr.appendChild(tdOwner);
-
-                // Created At
-                const tdCreated = document.createElement('td');
-                tdCreated.className = 'px-6 text-xs text-slate-400 font-mono break-words';
-                tdCreated.textContent = c.createTime || '—';
-                tr.appendChild(tdCreated);
-
-                // Action
-                const tdAction = document.createElement('td');
-                tdAction.className = 'px-6 text-right';
-                const btn = document.createElement('button');
-                btn.disabled = isAnyEntering;
-
-                if (isThisEntering) {
-                    btn.className = 'btn btn-wait';
-                    const wrapper = document.createElement('div');
-                    wrapper.className = 'flex items-center gap-1.5 justify-center w-full';
-
-                    const spinner = document.createElement('div');
-                    spinner.className = 'mini-spinner';
-                    wrapper.appendChild(spinner);
-
-                    const textSpan = document.createElement('span');
-                    textSpan.className = 'whitespace-nowrap';
-                    textSpan.textContent = 'Opening...';
-                    wrapper.appendChild(textSpan);
-
-                    btn.appendChild(wrapper);
-                } else {
-                    btn.className = isAnyEntering ? 'btn btn-disabled' : 'btn btn-primary';
-                    const wrapper = document.createElement('div');
-                    wrapper.className = 'flex items-center gap-1.5 justify-center w-full';
-
-                    const textSpan = document.createElement('span');
-                    textSpan.className = 'whitespace-nowrap';
-                    textSpan.textContent = 'Open Dashboard';
-                    wrapper.appendChild(textSpan);
-
-                    const parser = new DOMParser();
-                    const svgDoc = parser.parseFromString('<svg class="arrow-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>', 'image/svg+xml');
-                    wrapper.appendChild(svgDoc.documentElement);
-
-                    btn.appendChild(wrapper);
-                    if (!isAnyEntering) {
-                        btn.onclick = () => enterCluster(c.namespace, c.name, c.sessionName);
-                    }
-                }
-                tdAction.appendChild(btn);
-                tr.appendChild(tdAction);
-
-                tbody.appendChild(tr);
-            });
-        }
-
-        showingText.textContent = `Showing ${filtered.length} of ${clusters.length} available sessions`;
+// Like MUI's Snackbar, the timer restarts with half the time.
+const resumeEnterError = () => {
+    if (!byId("enter-error").hidden) {
+        startEnterErrorTimer(ENTER_ERROR_MS / 2);
     }
+};
 
-    searchInput.oninput = () => renderTable();
+const finishEnter = async (session) => {
+    try {
+        await enterCluster(session);
+        window.location.href = DASHBOARD_URL;
+    } catch (err) {
+        showEnterError(err.message);
+        state.entering = null;
+        render();
+    }
+};
 
-    window.addEventListener('pageshow', (event) => {
-        if (event.persisted || entering !== null) {
-            entering = null;
-            renderTable();
+const enter = (session) => {
+    if (state.entering) {
+        return;
+    }
+    state.entering = sessionId(session);
+    hideEnterError();
+    render();
+    finishEnter(session);
+};
+
+// ---- Tooltip ----
+
+// One tooltip, shown below whichever [data-tooltip] element is hovered or focused.
+let tooltipAnchor = null;
+
+const placeTooltip = () => {
+    const tooltip = byId("tooltip");
+    tooltip.textContent = tooltipAnchor.dataset.tooltip;
+    tooltip.hidden = false;
+    const anchor = tooltipAnchor.getBoundingClientRect();
+    // offsetWidth, unlike the bounding box, ignores the grow animation's scale.
+    const width = tooltip.offsetWidth;
+    const left = anchor.left + anchor.width / 2 - width / 2;
+    tooltip.style.left = `${Math.max(8, Math.min(left, document.documentElement.clientWidth - width - 8))}px`;
+    tooltip.style.top = `${anchor.bottom + 14}px`;
+};
+
+const showTooltip = (target) => {
+    if (target === tooltipAnchor) {
+        return;
+    }
+    tooltipAnchor = target;
+    if (target) {
+        placeTooltip();
+    } else {
+        byId("tooltip").hidden = true;
+    }
+};
+
+// A render can change the anchor's text or remove it.
+const updateTooltip = () => {
+    if (tooltipAnchor?.isConnected) {
+        placeTooltip();
+    } else {
+        showTooltip(null);
+    }
+};
+
+// ---- Wiring ----
+
+document.addEventListener("DOMContentLoaded", () => {
+    renderThemeToggle();
+    byId("theme-toggle").addEventListener("click", () => {
+        theme = theme === "light" ? "dark" : "light";
+        localStorage.setItem(THEME_KEY, theme);
+        applyTheme();
+        renderThemeToggle();
+        updateTooltip();
+    });
+    // The system theme applies only while the user hasn't picked one.
+    darkQuery.addEventListener("change", (event) => {
+        if (!themeFixed && !localStorage.getItem(THEME_KEY)) {
+            theme = event.matches ? "dark" : "light";
+            applyTheme();
+            renderThemeToggle();
         }
     });
 
-    // Initial fetch
-    fetchClusters();
-})();
+    byId("refresh").addEventListener("click", refresh);
+    byId("search").addEventListener("input", (event) => changeListing({ query: event.target.value }));
+    byId("clear-search").addEventListener("click", () => {
+        byId("search").value = "";
+        changeListing({ query: "" });
+        byId("search").focus();
+    });
+    for (const toggle of document.querySelectorAll(".toggle")) {
+        // Clicking the selected button keeps it selected.
+        toggle.addEventListener("click", () => changeListing({ statusFilter: toggle.dataset.status }));
+    }
+    for (const label of document.querySelectorAll(".sort-label")) {
+        // Like the Ray dashboard: a new column sorts ascending, the same column flips.
+        label.addEventListener("click", () => {
+            const key = label.dataset.sort;
+            const order = state.sort.key === key && state.sort.order === "asc" ? "desc" : "asc";
+            changeListing({ sort: { key, order } });
+        });
+    }
+
+    // Only the timer or the close button dismisses an enter error.
+    const enterError = byId("enter-error");
+    byId("close-enter-error").addEventListener("click", hideEnterError);
+    enterError.addEventListener("mouseenter", () => clearTimeout(enterErrorTimer));
+    enterError.addEventListener("mouseleave", resumeEnterError);
+    window.addEventListener("blur", () => clearTimeout(enterErrorTimer));
+    window.addEventListener("focus", resumeEnterError);
+
+    document.addEventListener("pointerover", (event) => showTooltip(event.target.closest("[data-tooltip]")));
+    document.addEventListener("focusin", (event) => showTooltip(event.target.closest("[data-tooltip]")));
+    document.addEventListener("focusout", () => showTooltip(null));
+    // The pointer left the window.
+    document.addEventListener("pointerout", (event) => event.relatedTarget || showTooltip(null));
+    window.addEventListener("scroll", () => showTooltip(null), true);
+
+    // Clear a stale spinner when going back restores this page from the bfcache.
+    window.addEventListener("pageshow", (event) => {
+        if (event.persisted) {
+            state.entering = null;
+            render();
+        }
+    });
+
+    const linked = linkedSession(window.location.search);
+    if (linked) {
+        // Drop the parameters so going back or reloading doesn't enter again.
+        window.history.replaceState(null, "", window.location.pathname);
+        state.entering = sessionId(linked);
+        finishEnter(linked);
+    }
+    refresh();
+});
