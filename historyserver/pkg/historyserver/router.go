@@ -303,7 +303,8 @@ func newSelectClusterFile(contentType string, body []byte) selectClusterFile {
 }
 
 func (f selectClusterFile) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	logrus.Infof("Received request: %s %s", r.Method, r.URL.String())
+	// Debug, since one page view requests several of these files and each reload revalidates them.
+	logrus.Debugf("Received request: %s %s", r.Method, r.URL.String())
 	w.Header().Set("Content-Type", f.contentType)
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-Content-Type-Options", "nosniff")

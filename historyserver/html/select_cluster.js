@@ -35,8 +35,12 @@ const storeTheme = (value) => {
     }
 };
 
-const storedTheme = readStoredTheme();
-let theme = themeFixed ? urlTheme : isThemeMode(storedTheme) ? storedTheme : darkQuery.matches ? "dark" : "light";
+const pickTheme = () => {
+    const storedTheme = readStoredTheme();
+    return themeFixed ? urlTheme : isThemeMode(storedTheme) ? storedTheme : darkQuery.matches ? "dark" : "light";
+};
+
+let theme = pickTheme();
 
 const applyTheme = () => {
     document.documentElement.dataset.theme = theme;
@@ -60,8 +64,15 @@ const isLive = (c) => c.sessionName === LIVE_SESSION;
 
 const sessionId = (c) => `${c.namespace}/${c.name}/${c.sessionName}`;
 
-// A link that enters the session on load, so it also works in a new tab.
-const sessionHref = (c) => `?${new URLSearchParams({ namespace: c.namespace, name: c.name, session: c.sessionName })}`;
+// A link that enters the session on load, so it also works in a new tab. It
+// keeps the page's other parameters, such as ?theme=.
+const sessionHref = (c) => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("namespace", c.namespace);
+    params.set("name", c.name);
+    params.set("session", c.sessionName);
+    return `?${params}`;
+};
 
 // The session that a sessionHref link names, read from location.search.
 const linkedSession = (search) => {
@@ -133,8 +144,8 @@ const fetchClusters = async () => {
     return (await res.json()) ?? [];
 };
 
-// Sets cookies that route the Ray dashboard's requests to the session. A 2xx
-// means done; the body (JSON or HTML, by History Server version) is ignored.
+// Sets cookies that route the Ray dashboard's requests to the session. Every
+// failure is a non-2xx status, so a 2xx means done and its body isn't read.
 const enterCluster = async ({ namespace, name, sessionName }) => {
     // A link can name the session, so encode each value to keep it in its path segment.
     const path = [namespace, "raycluster", name, sessionName].map(encodeURIComponent).join("/");
@@ -203,6 +214,7 @@ const sessionRow = (cluster) => {
 
     const link = nameCell.querySelector(".link");
     link.textContent = cluster.name;
+    link.dataset.session = sessionId(cluster);
     if (busy) {
         // No href while busy, so no new tabs either; role keeps it a link.
         link.setAttribute("role", "link");
@@ -383,25 +395,33 @@ const resumeEnterError = () => {
     }
 };
 
+// Resolves to whether the session was entered.
 const finishEnter = async (session) => {
     try {
         await enterCluster(session);
         window.location.href = DASHBOARD_URL;
+        return true;
     } catch (err) {
         showEnterError(err.message);
         state.entering = null;
         render();
+        return false;
     }
 };
 
-const enter = (session) => {
+const enter = async (session) => {
     if (state.entering) {
         return;
     }
-    state.entering = sessionId(session);
+    const id = sessionId(session);
+    state.entering = id;
     hideEnterError();
     render();
-    finishEnter(session);
+    // Rendering rebuilt the rows and dropped the focus, so give it back to the
+    // row's link unless the user has moved it meanwhile.
+    if (!(await finishEnter(session)) && document.activeElement === document.body) {
+        byId("session-rows").querySelector(`[data-session="${CSS.escape(id)}"]`)?.focus();
+    }
 };
 
 // ---- Tooltip ----
@@ -453,14 +473,13 @@ document.addEventListener("DOMContentLoaded", () => {
         renderThemeToggle();
         updateTooltip();
     });
+    const repickTheme = () => {
+        theme = pickTheme();
+        applyTheme();
+        renderThemeToggle();
+    };
     // The system theme applies only while the user hasn't picked one.
-    darkQuery.addEventListener("change", (event) => {
-        if (!themeFixed && !readStoredTheme()) {
-            theme = event.matches ? "dark" : "light";
-            applyTheme();
-            renderThemeToggle();
-        }
-    });
+    darkQuery.addEventListener("change", repickTheme);
 
     byId("refresh").addEventListener("click", refresh);
     byId("search").addEventListener("input", (event) => changeListing({ query: event.target.value }));
@@ -497,11 +516,15 @@ document.addEventListener("DOMContentLoaded", () => {
     document.addEventListener("pointerout", (event) => event.relatedTarget || showTooltip(null));
     window.addEventListener("scroll", () => showTooltip(null), true);
 
-    // Clear a stale spinner when going back restores this page from the bfcache.
+    // Going back can restore this page from the bfcache as it was left. Clear the
+    // stale spinner, and pick up a theme picked in the Ray dashboard and sessions
+    // that changed meanwhile; the old list shows until the new one loads.
     window.addEventListener("pageshow", (event) => {
         if (event.persisted) {
             state.entering = null;
+            repickTheme();
             render();
+            load();
         }
     });
 
