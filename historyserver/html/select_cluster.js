@@ -17,7 +17,25 @@ const urlTheme = new URLSearchParams(window.location.search).get("theme");
 // ?theme= fixes the mode, so the page has no toggle then.
 const themeFixed = isThemeMode(urlTheme);
 
-const storedTheme = localStorage.getItem(THEME_KEY);
+// localStorage throws when the browser blocks site data. The page then follows
+// the system theme, and a picked theme isn't kept.
+const readStoredTheme = () => {
+    try {
+        return localStorage.getItem(THEME_KEY);
+    } catch {
+        return null;
+    }
+};
+
+const storeTheme = (value) => {
+    try {
+        localStorage.setItem(THEME_KEY, value);
+    } catch {
+        // Storage is blocked or full: the theme still changes, it just isn't remembered.
+    }
+};
+
+const storedTheme = readStoredTheme();
 let theme = themeFixed ? urlTheme : isThemeMode(storedTheme) ? storedTheme : darkQuery.matches ? "dark" : "light";
 
 const applyTheme = () => {
@@ -62,7 +80,7 @@ const hasStatus = (c, status) => status === "all" || (status === "live") === isL
 
 const matches = (c, query) => {
     const lowerQuery = query.toLowerCase();
-    return [c.name, c.namespace, c.sessionName, c.ownerName].some((field) => (field ?? "").toLowerCase().includes(lowerQuery));
+    return [c.name, c.namespace, c.sessionName, c.ownerKind, c.ownerName].some((field) => (field ?? "").toLowerCase().includes(lowerQuery));
 };
 
 const SORT_VALUES = {
@@ -430,14 +448,14 @@ document.addEventListener("DOMContentLoaded", () => {
     renderThemeToggle();
     byId("theme-toggle").addEventListener("click", () => {
         theme = theme === "light" ? "dark" : "light";
-        localStorage.setItem(THEME_KEY, theme);
+        storeTheme(theme);
         applyTheme();
         renderThemeToggle();
         updateTooltip();
     });
     // The system theme applies only while the user hasn't picked one.
     darkQuery.addEventListener("change", (event) => {
-        if (!themeFixed && !localStorage.getItem(THEME_KEY)) {
+        if (!themeFixed && !readStoredTheme()) {
             theme = event.matches ? "dark" : "light";
             applyTheme();
             renderThemeToggle();
@@ -489,8 +507,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const linked = linkedSession(window.location.search);
     if (linked) {
-        // Drop the parameters so going back or reloading doesn't enter again.
-        window.history.replaceState(null, "", window.location.pathname);
+        // Drop the session's parameters so going back or reloading doesn't enter
+        // again, but keep any others, such as ?theme=.
+        const url = new URL(window.location.href);
+        for (const key of ["namespace", "name", "session"]) {
+            url.searchParams.delete(key);
+        }
+        window.history.replaceState(null, "", url);
         state.entering = sessionId(linked);
         finishEnter(linked);
     }

@@ -278,9 +278,13 @@ func routerHealthz(_ *ServerHandler) {
 	})
 }
 
+var selectClusterPage = newSelectClusterFile("text/html; charset=utf-8", html.ClusterSelectorHTML)
+
 // selectClusterFiles are the cluster selection page and the files it loads, by path.
+// {$} matches only the trailing slash, so a mistyped file path stays a 404.
 var selectClusterFiles = map[string]selectClusterFile{
-	"/select_cluster":                                     newSelectClusterFile("text/html; charset=utf-8", html.ClusterSelectorHTML),
+	"/select_cluster":                                     selectClusterPage,
+	"/select_cluster/{$}":                                 selectClusterPage,
 	"/select_cluster/select_cluster.css":                  newSelectClusterFile("text/css; charset=utf-8", html.ClusterSelectorCSS),
 	"/select_cluster/select_cluster.js":                   newSelectClusterFile("text/javascript; charset=utf-8", html.ClusterSelectorJS),
 	"/select_cluster/fonts/roboto-latin-400-normal.woff2": newSelectClusterFile("font/woff2", html.ClusterSelectorRoboto400),
